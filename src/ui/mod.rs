@@ -27,5 +27,5 @@ pub use home_screen::HomeScreen;
 pub use multi_csv_import::MultiCsvImportDialog;
 pub use export_dialog::{ExportDialog, ExportFormat};
 pub use gpu_renderer::{GpuPlotRenderer, RenderMode, GpuRenderer, GpuCapabilities};
-pub use time_based_grouping::{TimeBasedGroupingDialog, TimeBasedGroupingConfig, GroupingStrategy};
+pub use time_based_grouping::TimeBasedGroupingDialog;
 pub use time_bin_dialog::{TimeBinDialog, TimeBinConfig, TimeBinStrategy}; 

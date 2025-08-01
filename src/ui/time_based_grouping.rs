@@ -2,30 +2,7 @@ use egui::{self, RichText, Color32};
 use std::sync::Arc;
 use crate::core::database::Database;
 use crate::core::error::Result;
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum GroupingStrategy {
-    FixedInterval {
-        interval_seconds: u64,
-        interval_format: String,
-    },
-    ManualIntervals {
-        intervals: Vec<String>,
-        interval_string: String,
-    },
-    ThresholdBased {
-        threshold_seconds: u64,
-        threshold_format: String,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub struct TimeBasedGroupingConfig {
-    pub selected_table: String,
-    pub selected_column: String,
-    pub strategy: GroupingStrategy,
-    pub output_column_name: String,
-}
+use crate::ui::time_bin_dialog::{TimeBinStrategy as GroupingStrategy, TimeBinConfig as TimeBasedGroupingConfig};
 
 pub struct TimeBasedGroupingDialog {
     pub visible: bool,
