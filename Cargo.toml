@@ -29,56 +29,6 @@ glam = "0.27"
 bytemuck = { version = "1.15", features = ["derive"] }
 pollster = "0.3"
 
-
-
-[[bin]]
-name = "test_time_grouping"
-path = "test_time_grouping.rs"
-
-[[bin]]
-name = "simple_test"
-path = "simple_test.rs"
-
-[[bin]]
-name = "test_time_bin"
-path = "test_time_bin.rs"
-
-[[bin]]
-name = "manual_test"
-path = "manual_test.rs"
-
-[[bin]]
-name = "test_core"
-path = "test_core.rs"
-
-[[bin]]
-name = "verify_time_grouping"
-path = "verify_time_grouping.rs"
-
-[[bin]]
-name = "simple_verify"
-path = "simple_verify.rs"
-
-[[bin]]
-name = "final_test"
-path = "final_test.rs"
-
-[[bin]]
-name = "quick_test"
-path = "quick_test.rs"
-
-[[bin]]
-name = "test_time_grouping"
-path = "test_time_grouping.rs"
-
-[[bin]]
-name = "verify_time_grouping"
-path = "verify_time_grouping.rs"
-
-[[bin]]
-name = "simple_verify"
-path = "simple_verify.rs"
-
 [profile.release]
 opt-level = 3
 lto = true 
