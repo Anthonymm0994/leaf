@@ -1,19 +1,29 @@
 # Scripts
 
-This folder contains utility scripts for the Leaf application.
+This folder contains utility scripts for the Leaf application, including test data generation and validation tools.
 
-## Test Data Generator
+## Test Data Generator (`generate_test_data.py`)
 
-The `generate_test_data.py` script creates comprehensive test datasets with various distributions, time columns, and data types for testing the Leaf application.
+This script generates a synthetic CSV file (`test_data.csv`) with specific requirements for testing data inference and processing capabilities.
 
 ### Features
 
-- **Multiple Distributions**: Normal, exponential, uniform, log-normal, Poisson, gamma, beta, and Weibull distributions
-- **Time Data**: Sequential timestamps, non-sequential timestamps with gaps, Unix timestamps, and time-only data
-- **Categorical Data**: Categories with uneven distributions, binary flags, status codes, and regions
-- **Sequential Data**: Linear trends, cyclical patterns, and step functions
-- **Outlier Data**: Data with intentional outliers and missing values
-- **Multiple Datasets**: 6 different CSV files for various testing scenarios
+- **Time Columns**: 
+  - `good_time`: HH:MM:SS.sss format, strictly increasing, duplicated 1-5 times
+  - `dumb_time`: 1-5 minutes after good_time, empty for first row of each group
+- **Numerical Columns**: width (1-200), height (0.2-4.8), angle (0-360)
+- **Categorical Columns**: category_3 through category_10 with corresponding unique values
+- **Boolean Columns**: isGood, isOld, isWhat, isEnabled, isFlagged
+- **Inference Stress Test Columns**: 22 columns testing various data types with empty and "-" values
+- **Multi-value Column**: tags with comma-separated values
+- **Distribution Columns**: bimodal, linear_over_time, exponential, uniform, normal
+
+### Group Behavior
+
+- Data generated in groups of 200-500 rows
+- 80% unique groups, 15% duplicated once, 5% duplicated twice
+- Duplicated groups have identical data except time columns
+- ~10% of groups have 1-hour gaps after them (for testing time-based grouping)
 
 ### Usage
 
@@ -21,39 +31,66 @@ The `generate_test_data.py` script creates comprehensive test datasets with vari
 # Install dependencies
 pip install -r requirements.txt
 
-# Test the script with a small dataset
-python generate_test_data.py --test
+# Generate default 10,000 rows
+python generate_test_data.py
 
-# Generate 1000 rows of test data
-python generate_test_data.py --rows 1000
-
-# Generate 5000 rows and save to custom directory
-python generate_test_data.py --rows 5000 --output-dir my_test_data
+# Generate custom number of rows
+python generate_test_data.py --rows 5000
 ```
 
-### Generated Datasets
+## Test Data Validator (`validate_test_data.py`)
 
-1. **comprehensive_test_data.csv** - Full dataset with all features
-2. **time_series_data.csv** - Focused on time series analysis
-3. **data_with_gaps.csv** - Time data with intentional gaps for grouping tests
-4. **simple_test_data.csv** - Basic dataset for simple testing
-5. **data_with_nulls.csv** - Data with missing values and null patterns
-6. **high_frequency_data.csv** - High-frequency time data (1-minute intervals)
+This script validates the generated test_data.csv file to ensure it meets all requirements.
 
-### Data Types Included
+### Validation Checks
 
-- **Time Columns**: Sequential, non-sequential, Unix timestamps, time-only
-- **Numeric Distributions**: Normal, exponential, uniform, log-normal, Poisson, gamma, beta, Weibull
-- **Categorical**: Categories, binary flags, status codes, regions
-- **Sequential Patterns**: Linear trends, cyclical data, step functions
-- **Special Cases**: Outliers, missing values, null patterns
+- Time format and ordering validation
+- Group structure and duplication patterns
+- Time gaps between groups (including hour-long gaps)
+- Value ranges and data types
+- Inference column patterns
+- Distribution characteristics
 
-### Testing the Leaf Application
+### Usage
 
-These datasets are perfect for testing:
-- CSV import functionality
-- Time-based grouping features
-- Delta transformations
-- Data visualization
-- Query functionality
-- Error handling with various data types 
+```bash
+# Validate default test_data.csv
+python validate_test_data.py
+
+# Validate specific file
+python validate_test_data.py --file my_data.csv
+```
+
+## Quick Test
+
+To generate and validate test data:
+
+```bash
+# Generate test data
+python generate_test_data.py --rows 1000
+
+# Validate the generated data
+python validate_test_data.py
+```
+
+## Requirements
+
+See `requirements.txt` for dependencies:
+- pandas>=1.5.0
+- numpy>=1.21.0
+
+## Generated Test Data Files
+
+The following test data files are available:
+
+| File | Rows | Size | Description |
+|------|------|------|-------------|
+| `test_data_10k.csv` | 10,000 | 4.1 MB | Small dataset for quick testing |
+| `test_data_300k.csv` | 300,000 | 122 MB | Medium dataset for performance testing |
+| `test_data_3m.csv` | 3,000,000 | 1.2 GB | Large dataset for stress testing |
+
+See `dataset_statistics.md` for comprehensive statistics on each dataset including:
+- Missing value patterns
+- Distribution analysis
+- Time gap analysis
+- Column-by-column breakdowns 

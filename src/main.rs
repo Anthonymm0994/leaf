@@ -4,7 +4,7 @@ mod infer;
 mod ui;
 
 use eframe::egui;
-use app::FreshApp;
+use app::LeafApp;
 use ui::apply_theme;
 
 fn test_delta_null_handling() {
@@ -27,32 +27,32 @@ fn main() -> Result<(), eframe::Error> {
         return Ok(());
     }
     
-    // Load icon from fresh.png
+    // Load icon from leaf.png
     let icon_data = load_icon_from_png();
     
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1200.0, 800.0])
             .with_min_inner_size([800.0, 600.0])
-            .with_title("Fresh - DataFusion Viewer & Builder")
+            .with_title("Leaf - Arrow File Ingestion Tool")
             .with_icon(icon_data),
         ..Default::default()
     };
     
     eframe::run_native(
-        "Fresh",
+        "Leaf",
         options,
         Box::new(|cc| {
             // Apply the dark theme
             apply_theme(&cc.egui_ctx);
-            Ok(Box::new(FreshApp::new()))
+            Ok(Box::new(LeafApp::new()))
         }),
     )
 }
 
 fn load_icon_from_png() -> egui::IconData {
-    // Try to load the fresh.png file
-    if let Ok(image_data) = std::fs::read("media/fresh.png") {
+    // Try to load the leaf.png file
+    if let Ok(image_data) = std::fs::read("media/leaf.png") {
         if let Ok(image) = image::load_from_memory(&image_data) {
             let image = image.resize_exact(32, 32, image::imageops::FilterType::Lanczos3);
             let image_buffer = image.to_rgba8();
@@ -65,11 +65,11 @@ fn load_icon_from_png() -> egui::IconData {
     }
     
     // Fallback to generated icon if loading fails
-    create_fresh_icon()
+    create_leaf_icon()
 }
 
-fn create_fresh_icon() -> egui::IconData {
-    // Create a fresh, modern icon
+fn create_leaf_icon() -> egui::IconData {
+    // Create a leaf-themed icon
     let size = 32u32;
     let mut pixels = vec![0u8; (size * size * 4) as usize];
     
@@ -119,7 +119,7 @@ fn create_fresh_icon() -> egui::IconData {
     }
 }
 
-impl<'a> eframe::App for FreshApp<'a> {
+impl eframe::App for LeafApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.update(ctx);
     }

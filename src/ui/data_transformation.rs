@@ -342,21 +342,16 @@ pub struct SingleTransformation {
 
 pub struct TransformationManager {
     pub transformer: DataTransformer,
-    pub output_directory: PathBuf,
 }
 
 impl TransformationManager {
     pub fn new() -> Self {
-        let output_dir = PathBuf::from("transformed_data");
-        std::fs::create_dir_all(&output_dir).ok();
-        
         Self {
             transformer: DataTransformer::new(),
-            output_directory: output_dir,
         }
     }
 
-    pub fn apply_transformation(&self, request: &TransformationRequest, database: &Database) -> Result<String> {
+    pub fn apply_transformation(&self, request: &TransformationRequest, database: &Database, output_dir: &std::path::Path) -> Result<String> {
         // Get the data from the database
         let query = format!("SELECT * FROM {}", request.table_name);
         let rows = database.execute_query(&query)?;
@@ -421,7 +416,7 @@ impl TransformationManager {
 
         // Save the transformed data with a generic name since we have multiple transformations
         let output_filename = format!("{}_with_deltas.arrow", request.table_name);
-        let output_path = self.output_directory.join(output_filename);
+        let output_path = output_dir.join(output_filename);
         self.transformer.save_transformed_data(&current_batch, &output_path)?;
 
         Ok(output_path.to_string_lossy().to_string())

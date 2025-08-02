@@ -14,7 +14,6 @@ pub struct QueryWindow {
     export_format: ExportFormat,
     show_export_menu: bool,
     export_mode: ExportMode,
-    add_plot_requested: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -42,7 +41,6 @@ impl QueryWindow {
             export_format: ExportFormat::Csv,
             show_export_menu: false,
             export_mode: ExportMode::Page,
-            add_plot_requested: false,
         }
     }
     
@@ -52,6 +50,8 @@ impl QueryWindow {
         egui::Window::new(&self.title)
             .id(self.id)
             .default_size([600.0, 400.0])
+            .min_width(300.0)
+            .min_height(200.0)
             .resizable(true)
             .collapsible(true)
             .open(&mut open)
@@ -193,10 +193,6 @@ impl QueryWindow {
                         });
                         
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("Add Plot").clicked() {
-                                self.add_plot_requested = true;
-                            }
-                            
                             if ui.button("Export All").clicked() {
                                 self.export_all_csv(db.clone());
                             }
@@ -214,16 +210,6 @@ impl QueryWindow {
         }
         
         open
-    }
-    
-    pub fn check_plot_request(&mut self) -> bool {
-        let requested = self.add_plot_requested;
-        self.add_plot_requested = false;
-        requested
-    }
-    
-    pub fn get_current_result(&self) -> Option<&QueryResult> {
-        self.result.as_ref()
     }
     
     fn render_results_table(&self, ui: &mut egui::Ui, result: &QueryResult) {

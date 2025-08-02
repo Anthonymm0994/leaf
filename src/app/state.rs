@@ -1,6 +1,6 @@
 use egui::{Context, Id};
 use crate::core::{Database, TableInfo};
-use crate::ui::{Sidebar, SidebarAction, QueryWindow, CsvImportDialog, FileConfigDialog, HomeScreen, PlotWindow, DuplicateDetectionDialog, DuplicateResultsViewer, TransformationDialog, TransformationManager, TimeBasedGroupingDialog, TimeBinDialog};
+use crate::ui::{Sidebar, SidebarAction, QueryWindow, CsvImportDialog, FileConfigDialog, HomeScreen, DuplicateDetectionDialog, DuplicateResultsViewer, TransformationDialog, TransformationManager, TimeBinDialog};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -15,7 +15,7 @@ pub enum HomeAction {
     CreateProject,
 }
 
-pub struct FreshApp<'a> {
+pub struct LeafApp {
     mode: AppMode,
     database: Option<Arc<Database>>,
     database_path: Option<std::path::PathBuf>,
@@ -24,20 +24,18 @@ pub struct FreshApp<'a> {
     sidebar: Sidebar,
     home_screen: HomeScreen,
     query_windows: Vec<QueryWindow>,
-    plot_windows: Vec<PlotWindow<'a>>,
     csv_import_dialog: Option<CsvImportDialog>,
     file_config_dialog: FileConfigDialog,
     duplicate_detection_dialog: DuplicateDetectionDialog,
     duplicate_results_viewer: DuplicateResultsViewer,
     transformation_dialog: TransformationDialog,
     transformation_manager: TransformationManager,
-    time_based_grouping_dialog: TimeBasedGroupingDialog,
     time_bin_dialog: TimeBinDialog,
     next_window_id: usize,
     error: Option<String>,
 }
 
-impl<'a> FreshApp<'a> {
+impl LeafApp {
     pub fn new() -> Self {
         Self {
             mode: AppMode::Viewer,
@@ -48,14 +46,12 @@ impl<'a> FreshApp<'a> {
             sidebar: Sidebar::new(),
             home_screen: HomeScreen::new(),
             query_windows: Vec::new(),
-            plot_windows: Vec::new(),
             csv_import_dialog: None,
             file_config_dialog: FileConfigDialog::new(),
             duplicate_detection_dialog: DuplicateDetectionDialog::default(),
             duplicate_results_viewer: DuplicateResultsViewer::default(),
             transformation_dialog: TransformationDialog::new(),
             transformation_manager: TransformationManager::new(),
-            time_based_grouping_dialog: TimeBasedGroupingDialog::default(),
             time_bin_dialog: TimeBinDialog::default(),
             next_window_id: 0,
             error: None,
@@ -69,7 +65,7 @@ impl<'a> FreshApp<'a> {
         // Top panel with menu
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
-                ui.label(egui::RichText::new("Fresh").size(16.0).strong());
+                ui.label(egui::RichText::new("Leaf").size(16.0).strong());
                 ui.separator();
                 
             });
@@ -95,8 +91,8 @@ impl<'a> FreshApp<'a> {
                 .max_width(300.0)
                 .resizable(true)
                 .show(ctx, |ui| {
-                    // Set darker background for the sidebar panel
-                    ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_gray(30);
+                    // Set darker background for the sidebar panel with green tint
+                    ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_rgb(26, 32, 28);
                     
                     match self.sidebar.show(ctx, ui, &self.tables, &self.views) {
                         SidebarAction::OpenTable(table_name) => {
@@ -128,12 +124,6 @@ impl<'a> FreshApp<'a> {
                             self.transformation_dialog.visible = true;
                             if let Some(db) = &self.database {
                                 self.transformation_dialog.update_available_tables(db);
-                            }
-                        }
-                        SidebarAction::TimeBasedGrouping => {
-                            self.time_based_grouping_dialog.visible = true;
-                            if let Some(db) = &self.database {
-                                self.time_based_grouping_dialog.update_available_tables(db);
                             }
                         }
                         SidebarAction::None => {}
@@ -172,51 +162,12 @@ impl<'a> FreshApp<'a> {
             }
         });
         
-        // Query windows and plot handling
+        // Query windows
         if let Some(db) = &self.database {
-            // Check for plot requests from query windows
-            let mut plot_requests = Vec::new();
-            for window in &mut self.query_windows {
-                if window.check_plot_request() {
-                    if let Some(result) = window.get_current_result() {
-                        plot_requests.push(result.clone());
-                    }
-                }
-            }
-            
             // Show query windows
             self.query_windows.retain_mut(|window| {
                 window.show(ctx, db.clone())
             });
-            
-            // Create plot windows for requests (after query windows are processed)
-            for result in plot_requests {
-                self.create_plot_window(result);
-            }
-        }
-        
-        // Show plot windows
-        let mut to_close = vec![];
-        for (i, window) in self.plot_windows.iter_mut().enumerate() {
-            let mut open = window.open;
-            egui::Window::new(&window.title)
-                .id(egui::Id::new(&window.id))
-                .default_size([500.0, 400.0])
-                .resizable(true)
-                .collapsible(true)
-                .open(&mut open)
-                .show(ctx, |ui| {
-                    window.ui(ui);
-                });
-            if !open {
-                to_close.push(i);
-            } else {
-                window.open = open;
-            }
-        }
-        // Remove closed windows in reverse order
-        for &i in to_close.iter().rev() {
-            self.plot_windows.remove(i);
         }
         
         // Show CSV import dialog if active
@@ -235,7 +186,9 @@ impl<'a> FreshApp<'a> {
         // Show transformation dialog if active
         if let Some(db) = &self.database {
             if let Some(request) = self.transformation_dialog.show(ctx, db) {
-                match self.transformation_manager.apply_transformation(&request, db) {
+                let default_path = std::path::PathBuf::from(".");
+                let output_dir = self.database_path.as_ref().unwrap_or(&default_path);
+                match self.transformation_manager.apply_transformation(&request, db, output_dir) {
                     Ok(output_path) => {
                         self.error = Some(format!("Transformation completed successfully! Output saved to: {}", output_path));
                     }
@@ -246,14 +199,11 @@ impl<'a> FreshApp<'a> {
             }
         }
         
-        // Show time-based grouping dialog if active
-        if let Some(db) = &self.database {
-            self.time_based_grouping_dialog.show(ctx, db.clone());
-        }
-        
         // Show time bin dialog if active
         if let Some(db) = &self.database {
-            self.time_bin_dialog.show(ctx, db.clone());
+            let default_path = std::path::PathBuf::from(".");
+            let output_dir = self.database_path.as_ref().unwrap_or(&default_path);
+            self.time_bin_dialog.show(ctx, db.clone(), output_dir);
         }
         
         // File config dialog
@@ -391,26 +341,6 @@ impl<'a> FreshApp<'a> {
             self.query_windows.push(window);
             self.next_window_id += 1;
         }
-    }
-    
-    fn create_plot_window(&mut self, data: crate::core::QueryResult) {
-        let window_id = self.next_window_id;
-        self.next_window_id += 1;
-        
-        let title = format!("Plot {}", window_id);
-        let mut plot_window = PlotWindow::new(window_id.to_string(), title);
-        
-        // Initialize GPU renderer if available
-        if plot_window.config.use_gpu_rendering {
-            // Note: This is async but we're calling it synchronously for now
-            // In a real app, you'd want to handle this properly with async/await
-            pollster::block_on(plot_window.initialize_gpu_renderer());
-        }
-        
-        // Set the initial data
-        plot_window.update_data(data);
-        
-        self.plot_windows.push(plot_window);
     }
     
     fn show_csv_import(&mut self) {

@@ -95,7 +95,7 @@ impl TimeBinDialog {
         self.available_columns = all_columns;
     }
 
-    pub fn show(&mut self, ctx: &egui::Context, database: Arc<Database>) {
+    pub fn show(&mut self, ctx: &egui::Context, database: Arc<Database>, output_dir: &std::path::Path) {
         if !self.visible {
             return;
         }
@@ -107,7 +107,7 @@ impl TimeBinDialog {
 
         // Handle pending apply
         if self.pending_apply {
-            self.apply_time_bin(&database);
+                                    self.apply_time_bin(&database, output_dir);
             self.pending_apply = false;
         }
 
@@ -304,7 +304,7 @@ impl TimeBinDialog {
         }
     }
 
-    fn apply_time_bin(&mut self, database: &Arc<Database>) {
+    fn apply_time_bin(&mut self, database: &Arc<Database>, output_dir: &std::path::Path) {
         // Clear previous messages
         self.error_message = None;
         self.success_message = None;
@@ -337,7 +337,7 @@ impl TimeBinDialog {
                 };
 
                 // Apply the time bin logic
-                match self.execute_time_bin(database, &config) {
+                match self.execute_time_bin(database, &config, output_dir) {
                     Ok(_) => {
                         self.success_message = Some(format!(
                             "Successfully added time bin column to table '{}'",
@@ -365,7 +365,7 @@ impl TimeBinDialog {
         match database.execute_query(&query) {
             Ok(rows) => {
                 if rows.is_empty() {
-                    return Err(crate::core::error::FreshError::Custom(
+                    return Err(crate::core::error::LeafError::Custom(
                         "No data found in the selected column".to_string()
                     ));
                 }
@@ -382,7 +382,7 @@ impl TimeBinDialog {
                 }
 
                 if valid_count == 0 {
-                    return Err(crate::core::error::FreshError::Custom(
+                    return Err(crate::core::error::LeafError::Custom(
                         format!("Column '{}' does not appear to contain valid timestamp data", self.selected_column)
                     ));
                 }
@@ -390,7 +390,7 @@ impl TimeBinDialog {
                 Ok(())
             }
             Err(e) => {
-                Err(crate::core::error::FreshError::Custom(
+                Err(crate::core::error::LeafError::Custom(
                     format!("Failed to validate column: {}", e)
                 ))
             }
@@ -435,9 +435,9 @@ impl TimeBinDialog {
         false
     }
 
-    fn execute_time_bin(&self, database: &Arc<Database>, config: &TimeBinConfig) -> Result<()> {
+    fn execute_time_bin(&self, database: &Arc<Database>, config: &TimeBinConfig, output_dir: &std::path::Path) -> Result<()> {
         // Use the TimeGroupingEngine to apply the time bin logic
-        let output_table_name = crate::core::TimeGroupingEngine::apply_grouping(database, config)?;
+        let output_table_name = crate::core::TimeGroupingEngine::apply_grouping(database, config, output_dir)?;
         
         // Store the output table name for reference
         println!("Created time bin table: {}", output_table_name);

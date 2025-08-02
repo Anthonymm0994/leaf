@@ -10,7 +10,6 @@ pub enum SidebarAction {
     AddDerivedField,
     AddTimeBinColumn,
     AddRowIdColumns,
-    TimeBasedGrouping,
 }
 
 pub struct Sidebar {
@@ -33,8 +32,8 @@ impl Sidebar {
         let mut action = SidebarAction::None;
         self.duplicate_detection_clicked = false;
         
-        // Darker background for the sidebar
-        ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_gray(25);
+        // Darker background for the sidebar with green tint
+        ui.visuals_mut().widgets.noninteractive.bg_fill = egui::Color32::from_rgb(22, 28, 24);
         
         ui.vertical(|ui| {
             ui.heading("Data Sources");
@@ -65,10 +64,6 @@ impl Sidebar {
             
             if ui.button("🆔 Add Row ID Columns").clicked() {
                 action = SidebarAction::AddRowIdColumns;
-            }
-            
-            if ui.button("⏱️ Time-Based Grouping").clicked() {
-                action = SidebarAction::TimeBasedGrouping;
             }
             
             ui.add_space(10.0);

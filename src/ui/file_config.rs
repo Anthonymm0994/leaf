@@ -177,9 +177,9 @@ impl FileConfigDialog {
                 
                 // Set default database path in Documents folder
                 let default_db_path = if let Some(docs_dir) = dirs::document_dir() {
-                    docs_dir.join("fresh_project")
+                    docs_dir.join("leaf_project")
                 } else {
-                    PathBuf::from("fresh_project")
+                    PathBuf::from("leaf_project")
                 };
                 
                 // Create the project folder structure immediately

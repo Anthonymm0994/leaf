@@ -7,7 +7,7 @@ use datafusion::arrow::datatypes::{DataType, Field, Schema};
 use datafusion::arrow::array::{StringArray, Int64Array, Float64Array, BooleanArray, Date32Array, TimestampNanosecondArray, TimestampSecondArray, TimestampMillisecondArray, TimestampMicrosecondArray};
 use datafusion::arrow::datatypes::TimeUnit;
 use tokio::runtime::Runtime;
-use crate::core::error::{Result, FreshError};
+use crate::core::error::{Result, LeafError};
 use crate::infer::{TypeInferrer, ColumnType};
 
 #[derive(Debug, Clone)]
@@ -272,7 +272,7 @@ impl Database {
     pub fn open_readonly<P: AsRef<Path>>(_path: P) -> Result<Self> {
         // DataFusion is in-memory, so we don't need file paths for now
         let runtime = Runtime::new()
-            .map_err(|e| FreshError::Custom(format!("Failed to create tokio runtime: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to create tokio runtime: {}", e)))?;
         
         let ctx = SessionContext::new();
         
@@ -287,7 +287,7 @@ impl Database {
     pub fn open_writable<P: AsRef<Path>>(_path: P) -> Result<Self> {
         // DataFusion is in-memory, so we don't need file paths for now
         let runtime = Runtime::new()
-            .map_err(|e| FreshError::Custom(format!("Failed to create tokio runtime: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to create tokio runtime: {}", e)))?;
         
         let ctx = SessionContext::new();
         
@@ -326,11 +326,11 @@ impl Database {
         
         let result = self.runtime.block_on(async {
             ctx.sql(query).await
-        }).map_err(|e| FreshError::Custom(format!("Failed to execute query: {}", e)))?;
+        }).map_err(|e| LeafError::Custom(format!("Failed to execute query: {}", e)))?;
         
         let record_batches = self.runtime.block_on(async {
             result.collect().await
-        }).map_err(|e| FreshError::Custom(format!("Failed to collect results: {}", e)))?;
+        }).map_err(|e| LeafError::Custom(format!("Failed to collect results: {}", e)))?;
         
         if record_batches.is_empty() {
             return Ok(DataBatch {
@@ -370,7 +370,7 @@ impl Database {
         if let Some(first_row) = batch.rows.first() {
             if let Some(first_value) = first_row.first() {
                 return first_value.parse::<i64>()
-                    .map_err(|e| FreshError::Custom(format!("Failed to parse count result: {}", e)));
+                    .map_err(|e| LeafError::Custom(format!("Failed to parse count result: {}", e)));
             }
         }
         
@@ -392,7 +392,7 @@ impl Database {
         
         // Register the empty table
         self.ctx.register_batch(table_name, empty_batch)
-            .map_err(|e| FreshError::Custom(format!("Failed to register table: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to register table: {}", e)))?;
         
         Ok(())
     }
@@ -426,7 +426,7 @@ impl Database {
         let arrays = self.string_rows_to_arrow_arrays(&columns, values)?;
         
         let batch = RecordBatch::try_new(schema, arrays)
-            .map_err(|e| FreshError::Custom(format!("Failed to create record batch: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to create record batch: {}", e)))?;
         
         // Safely register or replace the table
         self.register_or_replace_table(table_name, batch.clone())?;
@@ -460,13 +460,13 @@ impl Database {
                 for (existing_name, existing_batch) in &self.registered_tables {
                     if existing_name != table_name {
                         new_ctx.register_batch(existing_name, existing_batch.as_ref().clone())
-                            .map_err(|e| FreshError::Custom(format!("Failed to re-register table {}: {}", existing_name, e)))?;
+                            .map_err(|e| LeafError::Custom(format!("Failed to re-register table {}: {}", existing_name, e)))?;
                     }
                 }
                 
                 // Register the new table
                 new_ctx.register_batch(table_name, batch)
-                    .map_err(|e| FreshError::Custom(format!("Failed to register data: {}", e)))?;
+                    .map_err(|e| LeafError::Custom(format!("Failed to register data: {}", e)))?;
                 
                 // Replace the context
                 self.ctx = new_ctx;
@@ -940,7 +940,7 @@ impl Database {
         let rt = Runtime::new()?;
         
         rt.block_on(async {
-            let df = ctx.sql(query).await.map_err(|e| FreshError::Database(e.to_string()))?;
+            let df = ctx.sql(query).await.map_err(|e| LeafError::Database(e.to_string()))?;
             let schema = df.schema();
             Ok(schema.fields().iter().map(|f| f.name().clone()).collect())
         })
@@ -951,7 +951,7 @@ impl Database {
         let rt = Runtime::new()?;
         
         rt.block_on(async {
-            let df = ctx.sql(query).await.map_err(|e| FreshError::Database(e.to_string()))?;
+            let df = ctx.sql(query).await.map_err(|e| LeafError::Database(e.to_string()))?;
             let schema = df.schema();
             Ok(schema.fields().iter().map(|f| f.data_type().clone()).collect())
         })
@@ -961,7 +961,7 @@ impl Database {
         let ctx = self.ctx.clone();
         self.runtime.block_on(async {
             ctx.sql(sql).await
-        }).map_err(|e| FreshError::Custom(format!("Failed to execute SQL: {}", e)))?;
+        }).map_err(|e| LeafError::Custom(format!("Failed to execute SQL: {}", e)))?;
         Ok(())
     }
 
@@ -975,7 +975,7 @@ impl Database {
             .delimiter(delimiter as u8)
             .has_headers(has_header)
             .from_path(csv_path)
-            .map_err(|e| FreshError::Custom(format!("Failed to read CSV: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to read CSV: {}", e)))?;
         
         let mut rows = Vec::new();
         let mut headers = Vec::new();
@@ -987,14 +987,14 @@ impl Database {
                     headers = header_result.iter().map(|s| s.to_string()).collect();
                 }
                 Err(e) => {
-                    return Err(FreshError::Custom(format!("Failed to read CSV headers: {}", e)));
+                    return Err(LeafError::Custom(format!("Failed to read CSV headers: {}", e)));
                 }
             }
         }
         
         // Read data rows
         for result in rdr.records() {
-            let record = result.map_err(|e| FreshError::Custom(format!("Failed to read CSV record: {}", e)))?;
+            let record = result.map_err(|e| LeafError::Custom(format!("Failed to read CSV record: {}", e)))?;
             let row: Vec<String> = record.iter().map(|s| s.to_string()).collect();
             rows.push(row);
         }
@@ -1014,7 +1014,7 @@ impl Database {
             // Ensure all rows have the expected number of columns
             for (row_idx, row) in rows.iter().enumerate() {
                 if row.len() != expected_columns {
-                    return Err(FreshError::Custom(format!(
+                    return Err(LeafError::Custom(format!(
                         "Row {} has {} columns, but table schema expects {} columns",
                         row_idx + 1, row.len(), expected_columns
                     )));
@@ -1071,7 +1071,7 @@ impl Database {
         let arrays = self.string_rows_to_arrow_arrays(&headers, &rows)?;
         
         let batch = RecordBatch::try_new(Arc::new(schema), arrays)
-            .map_err(|e| FreshError::Custom(format!("Failed to create record batch: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to create record batch: {}", e)))?;
         
         // Register the table with proper schema, handling replacement if it already exists
         self.register_or_replace_table(table_name, batch.clone())?;
@@ -1088,7 +1088,7 @@ impl Database {
         use std::fs::File;
         
         let file = File::open(csv_path)
-            .map_err(|e| FreshError::Custom(format!("Failed to open CSV file: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to open CSV file: {}", e)))?;
         
         let reader = BufReader::new(file);
         let lines: Vec<String> = reader.lines()
@@ -1097,14 +1097,14 @@ impl Database {
         
         // Validate header row (using original lines to match UI)
         if header_row >= lines.len() {
-            return Err(FreshError::Custom("Header row exceeds file length".to_string()));
+            return Err(LeafError::Custom("Header row exceeds file length".to_string()));
         }
         
         // Start reading from the header row (using original lines to match UI)
         let data_lines = lines.into_iter().skip(header_row).collect::<Vec<String>>();
         
         if data_lines.is_empty() {
-            return Err(FreshError::Custom("No data lines found after header row".to_string()));
+            return Err(LeafError::Custom("No data lines found after header row".to_string()));
         }
         
         // Extract headers from the first row (which is now the header)
@@ -1112,7 +1112,7 @@ impl Database {
             let header_line = &data_lines[0];
             Self::parse_csv_line(header_line, delimiter)
         } else {
-            return Err(FreshError::Custom("No header row found".to_string()));
+            return Err(LeafError::Custom("No header row found".to_string()));
         };
         
         // Infer delimiter from header if not already specified
@@ -1170,7 +1170,7 @@ impl Database {
             // Ensure all rows have the expected number of columns
             for (row_idx, row) in rows.iter().enumerate() {
                 if row.len() != expected_columns {
-                    return Err(FreshError::Custom(format!(
+                    return Err(LeafError::Custom(format!(
                         "Row {} has {} columns, but table schema expects {} columns",
                         row_idx + 1, row.len(), expected_columns
                     )));
@@ -1228,7 +1228,7 @@ impl Database {
         let arrays = self.string_rows_to_arrow_arrays_with_schema(&final_headers, &normalized_rows, &schema)?;
         
         let batch = RecordBatch::try_new(Arc::new(schema), arrays)
-            .map_err(|e| FreshError::Custom(format!("Failed to create record batch: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to create record batch: {}", e)))?;
         
         // Register the table with proper schema, handling replacement if it already exists
         self.register_or_replace_table(table_name, batch.clone())?;
@@ -1271,7 +1271,7 @@ impl Database {
         let empty_batch = RecordBatch::new_empty(Arc::new(schema));
         
         self.ctx.register_batch(table_name, empty_batch)
-            .map_err(|e| FreshError::Custom(format!("Failed to register table with schema: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to register table with schema: {}", e)))?;
         
         Ok(())
     }
@@ -1282,7 +1282,7 @@ impl Database {
         
         // Register the batch as a table
         self.ctx.register_batch(table_name, batch.clone())
-            .map_err(|e| FreshError::Custom(format!("Failed to register record batch: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to register record batch: {}", e)))?;
         
         // Store in our cache
         self.registered_tables.insert(table_name.to_string(), Arc::new(batch.clone()));
@@ -1301,14 +1301,14 @@ impl Database {
         
         let result = self.runtime.block_on(async {
             ctx.sql(&query).await
-        }).map_err(|e| FreshError::Custom(format!("Failed to load table: {}", e)))?;
+        }).map_err(|e| LeafError::Custom(format!("Failed to load table: {}", e)))?;
         
         let record_batches = self.runtime.block_on(async {
             result.collect().await
-        }).map_err(|e| FreshError::Custom(format!("Failed to collect table data: {}", e)))?;
+        }).map_err(|e| LeafError::Custom(format!("Failed to collect table data: {}", e)))?;
         
         if record_batches.is_empty() {
-            return Err(FreshError::Custom("No data found in table".to_string()));
+            return Err(LeafError::Custom("No data found in table".to_string()));
         }
         
         let batch = Arc::new(record_batches[0].clone());
@@ -1329,14 +1329,14 @@ impl Database {
         
         let result = self.runtime.block_on(async {
             ctx.sql(&query).await
-        }).map_err(|e| FreshError::Custom(format!("Failed to load table: {}", e)))?;
+        }).map_err(|e| LeafError::Custom(format!("Failed to load table: {}", e)))?;
         
         let record_batches = self.runtime.block_on(async {
             result.collect().await
-        }).map_err(|e| FreshError::Custom(format!("Failed to collect table data: {}", e)))?;
+        }).map_err(|e| LeafError::Custom(format!("Failed to collect table data: {}", e)))?;
         
         if record_batches.is_empty() {
-            return Err(FreshError::Custom("No data found in table".to_string()));
+            return Err(LeafError::Custom("No data found in table".to_string()));
         }
         
         let batch = Arc::new(record_batches[0].clone());
@@ -1360,7 +1360,7 @@ impl Database {
         
         // Create directory if it doesn't exist
         std::fs::create_dir_all(base_path)
-            .map_err(|e| FreshError::Custom(format!("Failed to create directory: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to create directory: {}", e)))?;
         
         // Save as Arrow IPC (fast cache)
         let arrow_path = base_path.join(format!("{}.arrow", table_name));
@@ -1381,16 +1381,16 @@ impl Database {
         let batch = self.load_table_arrow_batch(table_name)?;
         
         let file = File::create(path)
-            .map_err(|e| FreshError::Custom(format!("Failed to create Arrow IPC file: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to create Arrow IPC file: {}", e)))?;
         
         let mut writer = FileWriter::try_new(file, &batch.schema())
-            .map_err(|e| FreshError::Custom(format!("Failed to create Arrow IPC writer: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to create Arrow IPC writer: {}", e)))?;
         
         writer.write(&batch)
-            .map_err(|e| FreshError::Custom(format!("Failed to write Arrow IPC data: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to write Arrow IPC data: {}", e)))?;
         
         writer.finish()
-            .map_err(|e| FreshError::Custom(format!("Failed to finish Arrow IPC file: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to finish Arrow IPC file: {}", e)))?;
         
         Ok(())
     }
@@ -1401,20 +1401,20 @@ impl Database {
         use std::fs::File;
         
         let file = File::open(path)
-            .map_err(|e| FreshError::Custom(format!("Failed to open Arrow IPC file: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to open Arrow IPC file: {}", e)))?;
         
         let reader = FileReader::try_new(file, None)
-            .map_err(|e| FreshError::Custom(format!("Failed to create Arrow IPC reader: {}", e)))?;
+            .map_err(|e| LeafError::Custom(format!("Failed to create Arrow IPC reader: {}", e)))?;
         
         let mut batches = Vec::new();
         for batch_result in reader {
             let batch = batch_result
-                .map_err(|e| FreshError::Custom(format!("Failed to read Arrow IPC batch: {}", e)))?;
+                .map_err(|e| LeafError::Custom(format!("Failed to read Arrow IPC batch: {}", e)))?;
             batches.push(batch);
         }
         
         if batches.is_empty() {
-            return Err(FreshError::Custom("No data found in Arrow IPC file".to_string()));
+            return Err(LeafError::Custom("No data found in Arrow IPC file".to_string()));
         }
         
         // Combine all batches into one (for simplicity)
@@ -1441,15 +1441,15 @@ impl Database {
         }
         
         for entry in std::fs::read_dir(directory)
-            .map_err(|e| FreshError::Custom(format!("Failed to read directory: {}", e)))? {
+            .map_err(|e| LeafError::Custom(format!("Failed to read directory: {}", e)))? {
             
             let entry = entry
-                .map_err(|e| FreshError::Custom(format!("Failed to read directory entry: {}", e)))?;
+                .map_err(|e| LeafError::Custom(format!("Failed to read directory entry: {}", e)))?;
             
             let path = entry.path();
             let file_name = path.file_name()
                 .and_then(|n| n.to_str())
-                .ok_or_else(|| FreshError::Custom("Invalid file name".to_string()))?;
+                .ok_or_else(|| LeafError::Custom("Invalid file name".to_string()))?;
             
             if let Some(table_name) = file_name.strip_suffix(".arrow") {
                 // Load Arrow IPC files

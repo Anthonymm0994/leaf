@@ -1,4 +1,4 @@
-use crate::core::{Database, error::{Result, FreshError}};
+use crate::core::{Database, error::{Result, LeafError}};
 use std::sync::Arc;
 use datafusion::arrow::datatypes::DataType;
 
@@ -64,11 +64,11 @@ impl QueryExecutor {
                 match db.table_exists(table_name) {
                     Ok(exists) => {
                         if !exists {
-                            return Err(FreshError::Custom(format!("Table '{}' does not exist", table_name)));
+                            return Err(LeafError::Custom(format!("Table '{}' does not exist", table_name)));
                         }
                     }
                     Err(e) => {
-                        return Err(FreshError::Custom(format!("Error checking if table exists: {}", e)));
+                        return Err(LeafError::Custom(format!("Error checking if table exists: {}", e)));
                     }
                 }
 
@@ -98,7 +98,7 @@ impl QueryExecutor {
         
         for keyword in &forbidden_keywords {
             if query_upper.contains(keyword) {
-                return Err(FreshError::Custom(
+                return Err(LeafError::Custom(
                     format!("Query contains forbidden keyword '{}' in read-only mode", keyword)
                 ));
             }

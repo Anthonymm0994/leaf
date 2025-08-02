@@ -11,6 +11,7 @@ impl TimeGroupingEngine {
     pub fn apply_grouping(
         database: &Arc<crate::core::database::Database>,
         config: &TimeBasedGroupingConfig,
+        output_dir: &std::path::Path,
     ) -> Result<String> {
         // Get the table data
         let query = format!("SELECT * FROM \"{}\"", config.selected_table);
@@ -23,14 +24,14 @@ impl TimeGroupingEngine {
         let time_column_idx = column_names
             .iter()
             .position(|name| name == &config.selected_column)
-            .ok_or_else(|| crate::core::error::FreshError::Custom(format!("Time column '{}' not found", config.selected_column)))?;
+            .ok_or_else(|| crate::core::error::LeafError::Custom(format!("Time column '{}' not found", config.selected_column)))?;
 
         // Parse time values and create groups
         let groups = Self::create_groups(&rows, time_column_idx, &config.strategy)?;
         
         // Create new table with grouping column
         let output_table_name = format!("{}_grouped", config.selected_table);
-        Self::create_grouped_table(database, &rows, &column_names, &groups, &config.output_column_name, &output_table_name)?;
+        Self::create_grouped_table(database, &rows, &column_names, &groups, &config.output_column_name, &output_table_name, output_dir)?;
         
         Ok(output_table_name)
     }
@@ -172,6 +173,7 @@ impl TimeGroupingEngine {
         groups: &[i64],
         group_column_name: &str,
         output_table_name: &str,
+        output_dir: &std::path::Path,
     ) -> Result<()> {
         // Create new rows with grouping column
         let mut new_rows = Vec::new();
@@ -185,39 +187,38 @@ impl TimeGroupingEngine {
         let mut new_column_names = column_names.to_vec();
         new_column_names.push(group_column_name.to_string());
         
-        // Create transformed_data directory if it doesn't exist
-        let transformed_data_dir = std::path::Path::new("transformed_data");
-        if !transformed_data_dir.exists() {
-            std::fs::create_dir_all(transformed_data_dir)
-                .map_err(|e| crate::core::error::FreshError::Custom(format!("Failed to create transformed_data directory: {}", e)))?;
+        // Ensure output directory exists
+        if !output_dir.exists() {
+            std::fs::create_dir_all(output_dir)
+                .map_err(|e| crate::core::error::LeafError::Custom(format!("Failed to create output directory: {}", e)))?;
         }
         
         // Create a new database instance for the output
-        let mut new_db = crate::core::database::Database::open_writable(transformed_data_dir)?;
+        let mut new_db = crate::core::database::Database::open_writable(output_dir)?;
         
         // Create a temporary CSV file with the new data
-        let temp_csv_path = std::path::Path::new("transformed_data").join(format!("{}.csv", output_table_name));
+        let temp_csv_path = output_dir.join(format!("{}.csv", output_table_name));
         let mut csv_writer = csv::Writer::from_path(&temp_csv_path)
-            .map_err(|e| crate::core::error::FreshError::Custom(format!("Failed to create CSV writer: {}", e)))?;
+            .map_err(|e| crate::core::error::LeafError::Custom(format!("Failed to create CSV writer: {}", e)))?;
         
         // Write header
         csv_writer.write_record(&new_column_names)
-            .map_err(|e| crate::core::error::FreshError::Custom(format!("Failed to write CSV header: {}", e)))?;
+            .map_err(|e| crate::core::error::LeafError::Custom(format!("Failed to write CSV header: {}", e)))?;
         
         // Write data rows
         for row in &new_rows {
             csv_writer.write_record(row)
-                .map_err(|e| crate::core::error::FreshError::Custom(format!("Failed to write CSV row: {}", e)))?;
+                .map_err(|e| crate::core::error::LeafError::Custom(format!("Failed to write CSV row: {}", e)))?;
         }
         
         csv_writer.flush()
-            .map_err(|e| crate::core::error::FreshError::Custom(format!("Failed to flush CSV writer: {}", e)))?;
+            .map_err(|e| crate::core::error::LeafError::Custom(format!("Failed to flush CSV writer: {}", e)))?;
         
         // Import the CSV with automatic type inference
         new_db.stream_insert_csv(output_table_name, &temp_csv_path, ',', true)?;
         
         // Save the table as an Arrow file
-        let output_path = std::path::Path::new("transformed_data").join(format!("{}.arrow", output_table_name));
+        let output_path = output_dir.join(format!("{}.arrow", output_table_name));
         new_db.save_table_arrow_ipc(output_table_name, &output_path)?;
         
         // Clean up temporary CSV file
@@ -234,7 +235,7 @@ impl TimeGroupingEngine {
     fn parse_timestamp(time_str: &str) -> Result<i64> {
         // Handle empty strings
         if time_str.trim().is_empty() {
-            return Err(crate::core::error::FreshError::Custom("Empty timestamp string".to_string()));
+            return Err(crate::core::error::LeafError::Custom("Empty timestamp string".to_string()));
         }
         
         // Try different timestamp formats
@@ -276,7 +277,7 @@ impl TimeGroupingEngine {
             return Ok(datetime.timestamp());
         }
         
-        Err(crate::core::error::FreshError::Custom(format!("Unable to parse timestamp: '{}'. Supported formats: Unix timestamp, ISO 8601, YYYY-MM-DD HH:MM:SS, HH:MM:SS, HH:MM", time_str)))
+        Err(crate::core::error::LeafError::Custom(format!("Unable to parse timestamp: '{}'. Supported formats: Unix timestamp, ISO 8601, YYYY-MM-DD HH:MM:SS, HH:MM:SS, HH:MM", time_str)))
     }
 
     /// Parse time format string to seconds
@@ -284,19 +285,19 @@ impl TimeGroupingEngine {
         // Parse HH:MM:SS format
         let parts: Vec<&str> = time_str.split(':').collect();
         match parts.len() {
-            1 => time_str.parse::<u64>().map_err(|e| crate::core::error::FreshError::Custom(format!("Invalid time format: {}", e))),
+            1 => time_str.parse::<u64>().map_err(|e| crate::core::error::LeafError::Custom(format!("Invalid time format: {}", e))),
             2 => {
-                let minutes: u64 = parts[0].parse().map_err(|e| crate::core::error::FreshError::Custom(format!("Invalid minutes: {}", e)))?;
-                let seconds: u64 = parts[1].parse().map_err(|e| crate::core::error::FreshError::Custom(format!("Invalid seconds: {}", e)))?;
+                let minutes: u64 = parts[0].parse().map_err(|e| crate::core::error::LeafError::Custom(format!("Invalid minutes: {}", e)))?;
+                let seconds: u64 = parts[1].parse().map_err(|e| crate::core::error::LeafError::Custom(format!("Invalid seconds: {}", e)))?;
                 Ok(minutes * 60 + seconds)
             }
             3 => {
-                let hours: u64 = parts[0].parse().map_err(|e| crate::core::error::FreshError::Custom(format!("Invalid hours: {}", e)))?;
-                let minutes: u64 = parts[1].parse().map_err(|e| crate::core::error::FreshError::Custom(format!("Invalid minutes: {}", e)))?;
-                let seconds: u64 = parts[2].parse().map_err(|e| crate::core::error::FreshError::Custom(format!("Invalid seconds: {}", e)))?;
+                let hours: u64 = parts[0].parse().map_err(|e| crate::core::error::LeafError::Custom(format!("Invalid hours: {}", e)))?;
+                let minutes: u64 = parts[1].parse().map_err(|e| crate::core::error::LeafError::Custom(format!("Invalid minutes: {}", e)))?;
+                let seconds: u64 = parts[2].parse().map_err(|e| crate::core::error::LeafError::Custom(format!("Invalid seconds: {}", e)))?;
                 Ok(hours * 3600 + minutes * 60 + seconds)
             }
-            _ => Err(crate::core::error::FreshError::Custom(format!("Invalid time format: {}", time_str))),
+            _ => Err(crate::core::error::LeafError::Custom(format!("Invalid time format: {}", time_str))),
         }
     }
 } 

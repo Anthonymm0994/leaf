@@ -88,7 +88,7 @@ impl DuplicateDetector {
             .fields()
             .iter()
             .position(|field| field.name() == &self.config.group_column)
-            .ok_or_else(|| crate::core::error::FreshError::Custom(
+            .ok_or_else(|| crate::core::error::LeafError::Custom(
                 format!("Group column '{}' not found", self.config.group_column)
             ))?;
 
@@ -110,7 +110,7 @@ impl DuplicateDetector {
         // Get the group column as string array
         let group_col = batch.column(group_col_idx);
         let group_array = group_col.as_any().downcast_ref::<StringArray>()
-            .ok_or_else(|| crate::core::error::FreshError::Custom("Group column must be string type".to_string()))?;
+            .ok_or_else(|| crate::core::error::LeafError::Custom("Group column must be string type".to_string()))?;
 
         // Group rows by their group_id
         for (row_idx, group_id) in group_array.iter().enumerate() {
@@ -234,12 +234,12 @@ impl DuplicateDetector {
         match column.data_type() {
             DataType::Utf8 => {
                 let array = column.as_any().downcast_ref::<StringArray>()
-                    .ok_or_else(|| crate::core::error::FreshError::Custom("Failed to cast to StringArray".to_string()))?;
+                    .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to StringArray".to_string()))?;
                 Ok(array.value(row_idx).to_string())
             }
             DataType::Int64 => {
                 let array = column.as_any().downcast_ref::<Int64Array>()
-                    .ok_or_else(|| crate::core::error::FreshError::Custom("Failed to cast to Int64Array".to_string()))?;
+                    .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to Int64Array".to_string()))?;
                 if array.is_null(row_idx) {
                     Ok("NULL".to_string())
                 } else {
@@ -248,7 +248,7 @@ impl DuplicateDetector {
             }
             DataType::Float64 => {
                 let array = column.as_any().downcast_ref::<Float64Array>()
-                    .ok_or_else(|| crate::core::error::FreshError::Custom("Failed to cast to Float64Array".to_string()))?;
+                    .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to Float64Array".to_string()))?;
                 if array.is_null(row_idx) {
                     Ok("NULL".to_string())
                 } else {
@@ -257,7 +257,7 @@ impl DuplicateDetector {
             }
             DataType::Boolean => {
                 let array = column.as_any().downcast_ref::<BooleanArray>()
-                    .ok_or_else(|| crate::core::error::FreshError::Custom("Failed to cast to BooleanArray".to_string()))?;
+                    .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to BooleanArray".to_string()))?;
                 if array.is_null(row_idx) {
                     Ok("NULL".to_string())
                 } else {
@@ -268,7 +268,7 @@ impl DuplicateDetector {
                 let value = match unit {
                     TimeUnit::Second => {
                         let array = column.as_any().downcast_ref::<TimestampSecondArray>()
-                            .ok_or_else(|| crate::core::error::FreshError::Custom("Failed to cast to TimestampSecondArray".to_string()))?;
+                            .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to TimestampSecondArray".to_string()))?;
                         if array.is_null(row_idx) {
                             "NULL".to_string()
                         } else {
@@ -277,7 +277,7 @@ impl DuplicateDetector {
                     }
                     TimeUnit::Millisecond => {
                         let array = column.as_any().downcast_ref::<TimestampMillisecondArray>()
-                            .ok_or_else(|| crate::core::error::FreshError::Custom("Failed to cast to TimestampMillisecondArray".to_string()))?;
+                            .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to TimestampMillisecondArray".to_string()))?;
                         if array.is_null(row_idx) {
                             "NULL".to_string()
                         } else {
@@ -286,7 +286,7 @@ impl DuplicateDetector {
                     }
                     TimeUnit::Microsecond => {
                         let array = column.as_any().downcast_ref::<TimestampMicrosecondArray>()
-                            .ok_or_else(|| crate::core::error::FreshError::Custom("Failed to cast to TimestampMicrosecondArray".to_string()))?;
+                            .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to TimestampMicrosecondArray".to_string()))?;
                         if array.is_null(row_idx) {
                             "NULL".to_string()
                         } else {
@@ -295,7 +295,7 @@ impl DuplicateDetector {
                     }
                     TimeUnit::Nanosecond => {
                         let array = column.as_any().downcast_ref::<TimestampNanosecondArray>()
-                            .ok_or_else(|| crate::core::error::FreshError::Custom("Failed to cast to TimestampNanosecondArray".to_string()))?;
+                            .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to TimestampNanosecondArray".to_string()))?;
                         if array.is_null(row_idx) {
                             "NULL".to_string()
                         } else {
@@ -307,7 +307,7 @@ impl DuplicateDetector {
             }
             DataType::Date32 => {
                 let array = column.as_any().downcast_ref::<Date32Array>()
-                    .ok_or_else(|| crate::core::error::FreshError::Custom("Failed to cast to Date32Array".to_string()))?;
+                    .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to Date32Array".to_string()))?;
                 if array.is_null(row_idx) {
                     Ok("NULL".to_string())
                 } else {
