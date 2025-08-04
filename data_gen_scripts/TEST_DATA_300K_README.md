@@ -4,11 +4,22 @@ The `test_data_300k.csv` file is compressed as `test_data_300k.tar.gz` due to Gi
 
 ## Extracting the file
 
-To extract the CSV file:
+### Option 1: Direct CSV file (via Git LFS)
+The uncompressed `test_data_300k.csv` is now available directly via Git LFS. 
+Just pull the repository and the file will be downloaded automatically.
+
+### Option 2: From compressed file
+
+**On Windows (PowerShell or Git Bash):**
 ```bash
 cd data_gen_scripts
 tar -xzf test_data_300k.tar.gz
 ```
+
+**Alternative for Windows:**
+1. Right-click on `test_data_300k.tar.gz`
+2. Use 7-Zip, WinRAR, or Windows built-in extraction
+3. Extract to current directory
 
 ## File Description
 
