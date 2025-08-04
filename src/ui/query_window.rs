@@ -80,7 +80,6 @@ impl QueryWindow {
                     // Execute on Ctrl+Enter
                     if response.response.has_focus() 
                         && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.ctrl) {
-                        println!("Ctrl+Enter pressed! Executing query: {}", self.query);
                         self.page = 0;  // Reset to first page for new query
                         self.execute_query(db.clone());
                         ui.ctx().request_repaint(); // Force UI update
@@ -90,7 +89,6 @@ impl QueryWindow {
                 // Execute button
                 ui.horizontal(|ui| {
                     if ui.button("Execute Query").clicked() {
-                        println!("Execute button clicked! Query: {}", self.query);
                         self.page = 0;  // Reset to first page for new query
                         self.execute_query(db.clone());
                         ui.ctx().request_repaint();
@@ -183,17 +181,13 @@ impl QueryWindow {
                             
                             ui.label(format!("Page {} of {}", self.page + 1, total_pages));
                             
-                            // Debug info
-                            if self.result.as_ref().and_then(|r| r.total_rows).is_none() {
-                                ui.colored_label(egui::Color32::YELLOW, "Warning: total_rows not set!");
-                            }
+                            // Removed debug warning - total_rows is properly set by QueryExecutor
                             
                             let next_enabled = self.page + 1 < total_pages;
                             let next_button = ui.add_enabled(next_enabled, egui::Button::new("Next"))
                                 .on_hover_text(format!("Go to page {} (enabled: {})", self.page + 2, next_enabled));
                             
                             if next_button.clicked() {
-                                println!("Next button clicked! Moving from page {} to {}", self.page, self.page + 1);
                                 self.page += 1;
                                 self.execute_query(db.clone());
                             }
@@ -274,25 +268,17 @@ impl QueryWindow {
     }
     
     fn execute_query(&mut self, db: Arc<Database>) {
-        println!("execute_query called with page: {}, page_size: {}", self.page, self.page_size);
         self.error = None;
-        // Don't reset page - we're already managing it in the pagination buttons
-        // self.is_executing = true; // This line was removed from imports, so it's removed here.
         
         match crate::core::QueryExecutor::execute_with_pagination(&db, &self.query, self.page, self.page_size) {
             Ok(result) => {
-                println!("Query executed successfully. Total rows: {:?}, Returned rows: {}", 
-                    result.total_rows, result.rows.len());
                 self.result = Some(result);
             }
             Err(e) => {
-                println!("Query execution error: {}", e);
                 self.error = Some(e.to_string());
                 self.result = None;
             }
         }
-        
-        // self.is_executing = false; // This line was removed from imports, so it's removed here.
     }
     
     fn export_page_csv(&self) {
