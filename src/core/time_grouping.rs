@@ -30,7 +30,12 @@ impl TimeGroupingEngine {
         let groups = Self::create_groups(&rows, time_column_idx, &config.strategy)?;
         
         // Create new table with grouping column
-        let output_table_name = format!("{}_grouped", config.selected_table);
+        let output_table_name = if let Some(custom_name) = &config.output_filename {
+            // Remove .arrow extension if provided
+            custom_name.trim_end_matches(".arrow").to_string()
+        } else {
+            format!("{}_grouped", config.selected_table)
+        };
         Self::create_grouped_table(database, &rows, &column_names, &groups, &config.output_column_name, &output_table_name, output_dir)?;
         
         Ok(output_table_name)
@@ -70,22 +75,20 @@ impl TimeGroupingEngine {
             return Ok(());
         }
         
-        let mut current_group = 0i64;
-        let mut last_time: Option<i64> = None;
-        
+        // For fixed intervals, we divide the timestamp by the interval size
+        // This creates bins like: [0, interval), [interval, 2*interval), etc.
         for row in rows {
             let time_str = &row[time_column_idx];
-            let timestamp = Self::parse_timestamp(time_str)?;
             
-            if let Some(last) = last_time {
-                let time_diff = timestamp - last;
-                if time_diff >= interval_seconds as i64 {
-                    current_group += 1;
-                }
+            // Handle empty strings (converted nulls) by assigning to a special bin
+            if time_str.trim().is_empty() {
+                groups.push(-1); // Special bin for null/empty values
+                continue;
             }
             
-            groups.push(current_group);
-            last_time = Some(timestamp);
+            let timestamp = Self::parse_timestamp(time_str)?;
+            let bin = timestamp / (interval_seconds as i64);
+            groups.push(bin);
         }
         
         Ok(())
@@ -254,6 +257,7 @@ impl TimeGroupingEngine {
             "%Y-%m-%dT%H:%M:%S",
             "%Y-%m-%d %H:%M:%S%.f",
             "%Y-%m-%dT%H:%M:%S%.f",
+            "%H:%M:%S%.f",
             "%H:%M:%S",
             "%H:%M",
         ];
@@ -265,6 +269,19 @@ impl TimeGroupingEngine {
         }
         
         // Try time-only format (assume today's date)
+        // Try with milliseconds first
+        if let Ok(time) = chrono::NaiveTime::parse_from_str(time_str, "%H:%M:%S%.f") {
+            let today = chrono::Utc::now().date_naive();
+            let datetime = today.and_time(time);
+            return Ok(datetime.timestamp());
+        }
+        
+        if let Ok(time) = chrono::NaiveTime::parse_from_str(time_str, "%H:%M:%S%.3f") {
+            let today = chrono::Utc::now().date_naive();
+            let datetime = today.and_time(time);
+            return Ok(datetime.timestamp());
+        }
+        
         if let Ok(time) = chrono::NaiveTime::parse_from_str(time_str, "%H:%M:%S") {
             let today = chrono::Utc::now().date_naive();
             let datetime = today.and_time(time);
@@ -277,7 +294,7 @@ impl TimeGroupingEngine {
             return Ok(datetime.timestamp());
         }
         
-        Err(crate::core::error::LeafError::Custom(format!("Unable to parse timestamp: '{}'. Supported formats: Unix timestamp, ISO 8601, YYYY-MM-DD HH:MM:SS, HH:MM:SS, HH:MM", time_str)))
+        Err(crate::core::error::LeafError::Custom(format!("Unable to parse timestamp: '{}'. Supported formats: Unix timestamp, ISO 8601, YYYY-MM-DD HH:MM:SS, HH:MM:SS.sss, HH:MM:SS, HH:MM", time_str)))
     }
 
     /// Parse time format string to seconds

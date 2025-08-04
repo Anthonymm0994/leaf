@@ -1,6 +1,6 @@
 use egui::{Context, Id};
-use crate::core::{Database, TableInfo};
-use crate::ui::{Sidebar, SidebarAction, QueryWindow, CsvImportDialog, FileConfigDialog, HomeScreen, DuplicateDetectionDialog, DuplicateResultsViewer, TransformationDialog, TransformationManager, TimeBinDialog};
+use crate::core::{Database, TableInfo, ComputedColumnsProcessor, EnhancedGroupingProcessor};
+use crate::ui::{Sidebar, SidebarAction, QueryWindow, CsvImportDialog, FileConfigDialog, HomeScreen, DuplicateDetectionDialog, DuplicateResultsViewer, TransformationDialog, TransformationManager, TimeBinDialog, ComputedColumnsDialog, EnhancedGroupingDialog};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -30,6 +30,10 @@ pub struct LeafApp {
     duplicate_results_viewer: DuplicateResultsViewer,
     transformation_dialog: TransformationDialog,
     transformation_manager: TransformationManager,
+    computed_columns_dialog: ComputedColumnsDialog,
+    computed_columns_processor: ComputedColumnsProcessor,
+    enhanced_grouping_dialog: EnhancedGroupingDialog,
+    enhanced_grouping_processor: EnhancedGroupingProcessor,
     time_bin_dialog: TimeBinDialog,
     next_window_id: usize,
     error: Option<String>,
@@ -52,6 +56,10 @@ impl LeafApp {
             duplicate_results_viewer: DuplicateResultsViewer::default(),
             transformation_dialog: TransformationDialog::new(),
             transformation_manager: TransformationManager::new(),
+            computed_columns_dialog: ComputedColumnsDialog::new(),
+            computed_columns_processor: ComputedColumnsProcessor::new(),
+            enhanced_grouping_dialog: EnhancedGroupingDialog::new(),
+            enhanced_grouping_processor: EnhancedGroupingProcessor::new(),
             time_bin_dialog: TimeBinDialog::default(),
             next_window_id: 0,
             error: None,
@@ -107,10 +115,10 @@ impl LeafApp {
                         SidebarAction::RefreshDatabase => {
                             self.refresh_database();
                         }
-                        SidebarAction::AddDerivedField => {
-                            self.transformation_dialog.visible = true;
+                        SidebarAction::AddComputedColumns => {
+                            self.computed_columns_dialog.visible = true;
                             if let Some(db) = &self.database {
-                                self.transformation_dialog.update_available_tables(db);
+                                self.computed_columns_dialog.update_available_tables(db);
                             }
                         }
                         SidebarAction::AddTimeBinColumn => {
@@ -119,11 +127,10 @@ impl LeafApp {
                                 self.time_bin_dialog.update_available_tables(db);
                             }
                         }
-                        SidebarAction::AddRowIdColumns => {
-                            // For now, redirect to delta transformations since we're focusing on that
-                            self.transformation_dialog.visible = true;
+                        SidebarAction::AddGroupIdColumns => {
+                            self.enhanced_grouping_dialog.visible = true;
                             if let Some(db) = &self.database {
-                                self.transformation_dialog.update_available_tables(db);
+                                self.enhanced_grouping_dialog.update_available_tables(db);
                             }
                         }
                         SidebarAction::None => {}
@@ -194,6 +201,43 @@ impl LeafApp {
                     }
                     Err(e) => {
                         self.error = Some(format!("Transformation failed: {}", e));
+                    }
+                }
+            }
+        }
+        
+        // Show computed columns dialog if active
+        if let Some(db) = &self.database {
+            if let Some(request) = self.computed_columns_dialog.show(ctx, db) {
+                let default_path = std::path::PathBuf::from(".");
+                let output_dir = self.database_path.as_ref().unwrap_or(&default_path);
+                
+                match self.computed_columns_processor.process_request(&request, db, output_dir) {
+                    Ok(output_filename) => {
+                        self.error = Some(format!("Computed columns created successfully! Output saved to: {}", output_filename));
+                        // Refresh the database to show the new file
+                        self.refresh_database();
+                    }
+                    Err(e) => {
+                        self.error = Some(format!("Failed to create computed columns: {}", e));
+                    }
+                }
+            }
+        }
+        
+        // Show enhanced grouping dialog if active
+        if let Some(db) = &self.database {
+            if let Some(request) = self.enhanced_grouping_dialog.show(ctx, db) {
+                let default_path = std::path::PathBuf::from(".");
+                let output_dir = self.database_path.as_ref().unwrap_or(&default_path);
+                
+                match self.enhanced_grouping_processor.process_request(&request, db, output_dir) {
+                    Ok(output_filename) => {
+                        self.error = Some(format!("Group ID columns created successfully! Output saved to: {}", output_filename));
+                        self.refresh_database();
+                    }
+                    Err(e) => {
+                        self.error = Some(format!("Failed to create group ID columns: {}", e));
                     }
                 }
             }

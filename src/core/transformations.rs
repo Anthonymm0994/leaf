@@ -13,6 +13,11 @@ pub enum TransformationType {
     Delta,
     TimeBin,
     RowId,
+    CumulativeSum,
+    Percentage,
+    Ratio,
+    MovingAverage,
+    ZScore,
 }
 
 #[derive(Debug, Clone)]
@@ -334,6 +339,231 @@ impl DataTransformer {
         }
 
         timestamp_columns
+    }
+
+    /// Apply cumulative sum transformation
+    pub fn apply_cumulative_sum(&self, batch: &RecordBatch, column_name: &str, output_name: &str) -> Result<RecordBatch> {
+        let schema = batch.schema();
+        let column_idx = schema.column_with_name(column_name)
+            .ok_or_else(|| anyhow!("Column '{}' not found", column_name))?.0;
+
+        let array = batch.column(column_idx);
+        let cumsum_array = self.compute_cumulative_sum(array)?;
+
+        // Create new schema with additional column
+        let mut new_fields = schema.fields().to_vec();
+        new_fields.push(Arc::new(Field::new(output_name, cumsum_array.data_type().clone(), true)));
+        let new_schema = Arc::new(Schema::new(new_fields));
+
+        // Create new arrays with the cumulative sum column
+        let mut new_arrays = batch.columns().to_vec();
+        new_arrays.push(cumsum_array);
+
+        Ok(RecordBatch::try_new(new_schema, new_arrays)?)
+    }
+
+    /// Compute cumulative sum of an array
+    fn compute_cumulative_sum(&self, array: &ArrayRef) -> Result<ArrayRef> {
+        match array.data_type() {
+            DataType::Int64 => {
+                let int_array = array.as_any().downcast_ref::<Int64Array>().unwrap();
+                let mut cumsum = 0i64;
+                let mut values = Vec::with_capacity(int_array.len());
+                
+                for i in 0..int_array.len() {
+                    if int_array.is_null(i) {
+                        values.push(None);
+                    } else {
+                        cumsum += int_array.value(i);
+                        values.push(Some(cumsum));
+                    }
+                }
+                
+                Ok(Arc::new(Int64Array::from(values)))
+            }
+            DataType::Float64 => {
+                let float_array = array.as_any().downcast_ref::<Float64Array>().unwrap();
+                let mut cumsum = 0.0f64;
+                let mut values = Vec::with_capacity(float_array.len());
+                
+                for i in 0..float_array.len() {
+                    if float_array.is_null(i) {
+                        values.push(None);
+                    } else {
+                        cumsum += float_array.value(i);
+                        values.push(Some(cumsum));
+                    }
+                }
+                
+                Ok(Arc::new(Float64Array::from(values)))
+            }
+            _ => Err(anyhow!("Unsupported data type for cumulative sum: {:?}", array.data_type())),
+        }
+    }
+
+    /// Apply percentage transformation (each value as percentage of total)
+    pub fn apply_percentage(&self, batch: &RecordBatch, column_name: &str, output_name: &str) -> Result<RecordBatch> {
+        let schema = batch.schema();
+        let column_idx = schema.column_with_name(column_name)
+            .ok_or_else(|| anyhow!("Column '{}' not found", column_name))?.0;
+
+        let array = batch.column(column_idx);
+        let pct_array = self.compute_percentage(array)?;
+
+        // Create new schema with additional column
+        let mut new_fields = schema.fields().to_vec();
+        new_fields.push(Arc::new(Field::new(output_name, DataType::Float64, true)));
+        let new_schema = Arc::new(Schema::new(new_fields));
+
+        // Create new arrays with the percentage column
+        let mut new_arrays = batch.columns().to_vec();
+        new_arrays.push(pct_array);
+
+        Ok(RecordBatch::try_new(new_schema, new_arrays)?)
+    }
+
+    /// Compute percentage of total for each value
+    fn compute_percentage(&self, array: &ArrayRef) -> Result<ArrayRef> {
+        match array.data_type() {
+            DataType::Int64 => {
+                let int_array = array.as_any().downcast_ref::<Int64Array>().unwrap();
+                let mut total = 0i64;
+                
+                // First pass: calculate total
+                for i in 0..int_array.len() {
+                    if !int_array.is_null(i) {
+                        total += int_array.value(i);
+                    }
+                }
+                
+                // Second pass: calculate percentages
+                let mut values = Vec::with_capacity(int_array.len());
+                for i in 0..int_array.len() {
+                    if int_array.is_null(i) || total == 0 {
+                        values.push(None);
+                    } else {
+                        let pct = (int_array.value(i) as f64 / total as f64) * 100.0;
+                        values.push(Some(pct));
+                    }
+                }
+                
+                Ok(Arc::new(Float64Array::from(values)))
+            }
+            DataType::Float64 => {
+                let float_array = array.as_any().downcast_ref::<Float64Array>().unwrap();
+                let mut total = 0.0f64;
+                
+                // First pass: calculate total
+                for i in 0..float_array.len() {
+                    if !float_array.is_null(i) {
+                        total += float_array.value(i);
+                    }
+                }
+                
+                // Second pass: calculate percentages
+                let mut values = Vec::with_capacity(float_array.len());
+                for i in 0..float_array.len() {
+                    if float_array.is_null(i) || total == 0.0 {
+                        values.push(None);
+                    } else {
+                        let pct = (float_array.value(i) / total) * 100.0;
+                        values.push(Some(pct));
+                    }
+                }
+                
+                Ok(Arc::new(Float64Array::from(values)))
+            }
+            _ => Err(anyhow!("Unsupported data type for percentage: {:?}", array.data_type())),
+        }
+    }
+
+    /// Apply ratio transformation (column A / column B)
+    pub fn apply_ratio(&self, batch: &RecordBatch, numerator: &str, denominator: &str, output_name: &str) -> Result<RecordBatch> {
+        let schema = batch.schema();
+        
+        let num_idx = schema.column_with_name(numerator)
+            .ok_or_else(|| anyhow!("Numerator column '{}' not found", numerator))?.0;
+        let den_idx = schema.column_with_name(denominator)
+            .ok_or_else(|| anyhow!("Denominator column '{}' not found", denominator))?.0;
+
+        let num_array = batch.column(num_idx);
+        let den_array = batch.column(den_idx);
+        let ratio_array = self.compute_ratio(num_array, den_array)?;
+
+        // Create new schema with additional column
+        let mut new_fields = schema.fields().to_vec();
+        new_fields.push(Arc::new(Field::new(output_name, DataType::Float64, true)));
+        let new_schema = Arc::new(Schema::new(new_fields));
+
+        // Create new arrays with the ratio column
+        let mut new_arrays = batch.columns().to_vec();
+        new_arrays.push(ratio_array);
+
+        Ok(RecordBatch::try_new(new_schema, new_arrays)?)
+    }
+
+    /// Compute ratio between two arrays
+    fn compute_ratio(&self, numerator: &ArrayRef, denominator: &ArrayRef) -> Result<ArrayRef> {
+        if numerator.len() != denominator.len() {
+            return Err(anyhow!("Arrays must have the same length for ratio calculation"));
+        }
+
+        let mut values = Vec::with_capacity(numerator.len());
+
+        match (numerator.data_type(), denominator.data_type()) {
+            (DataType::Float64, DataType::Float64) => {
+                let num_array = numerator.as_any().downcast_ref::<Float64Array>().unwrap();
+                let den_array = denominator.as_any().downcast_ref::<Float64Array>().unwrap();
+                
+                for i in 0..num_array.len() {
+                    if num_array.is_null(i) || den_array.is_null(i) || den_array.value(i) == 0.0 {
+                        values.push(None);
+                    } else {
+                        values.push(Some(num_array.value(i) / den_array.value(i)));
+                    }
+                }
+            }
+            (DataType::Int64, DataType::Int64) => {
+                let num_array = numerator.as_any().downcast_ref::<Int64Array>().unwrap();
+                let den_array = denominator.as_any().downcast_ref::<Int64Array>().unwrap();
+                
+                for i in 0..num_array.len() {
+                    if num_array.is_null(i) || den_array.is_null(i) || den_array.value(i) == 0 {
+                        values.push(None);
+                    } else {
+                        values.push(Some(num_array.value(i) as f64 / den_array.value(i) as f64));
+                    }
+                }
+            }
+            (DataType::Float64, DataType::Int64) => {
+                let num_array = numerator.as_any().downcast_ref::<Float64Array>().unwrap();
+                let den_array = denominator.as_any().downcast_ref::<Int64Array>().unwrap();
+                
+                for i in 0..num_array.len() {
+                    if num_array.is_null(i) || den_array.is_null(i) || den_array.value(i) == 0 {
+                        values.push(None);
+                    } else {
+                        values.push(Some(num_array.value(i) / den_array.value(i) as f64));
+                    }
+                }
+            }
+            (DataType::Int64, DataType::Float64) => {
+                let num_array = numerator.as_any().downcast_ref::<Int64Array>().unwrap();
+                let den_array = denominator.as_any().downcast_ref::<Float64Array>().unwrap();
+                
+                for i in 0..num_array.len() {
+                    if num_array.is_null(i) || den_array.is_null(i) || den_array.value(i) == 0.0 {
+                        values.push(None);
+                    } else {
+                        values.push(Some(num_array.value(i) as f64 / den_array.value(i)));
+                    }
+                }
+            }
+            _ => return Err(anyhow!("Unsupported data types for ratio: {:?} / {:?}", 
+                                   numerator.data_type(), denominator.data_type())),
+        }
+
+        Ok(Arc::new(Float64Array::from(values)))
     }
 
     /// Test function to verify null handling in delta computation

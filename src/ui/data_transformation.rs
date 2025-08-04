@@ -411,6 +411,26 @@ impl TransformationManager {
                 TransformationType::RowId => {
                     self.transformer.apply_row_id(&current_batch, &transformation.output_column_name, transformation.grouping_columns.as_deref())?
                 }
+                TransformationType::CumulativeSum => {
+                    // Not implemented in this dialog - handled by ComputedColumnsDialog
+                    return Err(anyhow!("Cumulative sum should be handled by Computed Columns dialog"));
+                }
+                TransformationType::Percentage => {
+                    // Not implemented in this dialog - handled by ComputedColumnsDialog
+                    return Err(anyhow!("Percentage should be handled by Computed Columns dialog"));
+                }
+                TransformationType::Ratio => {
+                    // Not implemented in this dialog - handled by ComputedColumnsDialog
+                    return Err(anyhow!("Ratio should be handled by Computed Columns dialog"));
+                }
+                TransformationType::MovingAverage => {
+                    // Not implemented in this dialog - handled by ComputedColumnsDialog
+                    return Err(anyhow!("Moving average should be handled by Computed Columns dialog"));
+                }
+                TransformationType::ZScore => {
+                    // Not implemented in this dialog - handled by ComputedColumnsDialog
+                    return Err(anyhow!("Z-score should be handled by Computed Columns dialog"));
+                }
             };
         }
 

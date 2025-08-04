@@ -7,9 +7,9 @@ pub enum SidebarAction {
     OpenTable(String),
     OpenDuplicateDetection,
     RefreshDatabase,
-    AddDerivedField,
+    AddComputedColumns,
     AddTimeBinColumn,
-    AddRowIdColumns,
+    AddGroupIdColumns,
 }
 
 pub struct Sidebar {
@@ -54,16 +54,16 @@ impl Sidebar {
                 self.duplicate_detection_clicked = true;
             }
             
-            if ui.button("➕ Add Derived Field").clicked() {
-                action = SidebarAction::AddDerivedField;
+            if ui.button("➕ Add Computed Columns").clicked() {
+                action = SidebarAction::AddComputedColumns;
             }
             
             if ui.button("⏰ Add Time Bin Column").clicked() {
                 action = SidebarAction::AddTimeBinColumn;
             }
             
-            if ui.button("🆔 Add Row ID Columns").clicked() {
-                action = SidebarAction::AddRowIdColumns;
+            if ui.button("🆔 Add Group ID Columns").clicked() {
+                action = SidebarAction::AddGroupIdColumns;
             }
             
             ui.add_space(10.0);

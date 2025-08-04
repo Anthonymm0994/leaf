@@ -104,6 +104,37 @@ impl Database {
     }
 
     /// Normalize time data by padding all entries to the highest precision found
+    /// Parse a datetime string to a timestamp in the specified unit
+    fn parse_datetime_string_to_timestamp(datetime_str: &str, unit: &TimeUnit) -> Option<i64> {
+        use chrono::NaiveDateTime;
+        
+        // Common datetime formats
+        let formats = [
+            "%Y-%m-%d %H:%M:%S%.f",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S%.f",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y/%m/%d %H:%M:%S",
+            "%d/%m/%Y %H:%M:%S",
+            "%m/%d/%Y %H:%M:%S",
+        ];
+        
+        for format in &formats {
+            if let Ok(datetime) = NaiveDateTime::parse_from_str(datetime_str, format) {
+                // Convert to timestamp in the requested unit
+                let timestamp = match unit {
+                    TimeUnit::Second => datetime.and_utc().timestamp(),
+                    TimeUnit::Millisecond => datetime.and_utc().timestamp_millis(),
+                    TimeUnit::Microsecond => datetime.and_utc().timestamp_micros(),
+                    TimeUnit::Nanosecond => datetime.and_utc().timestamp_nanos_opt().unwrap_or(0),
+                };
+                return Some(timestamp);
+            }
+        }
+        
+        None
+    }
+    
     /// Parse a time string in HH:MM:SS format to a timestamp in the specified unit
     fn parse_time_string_to_timestamp(time_str: &str, unit: &TimeUnit) -> Option<i64> {
         let parts: Vec<&str> = time_str.split(':').collect();
@@ -184,9 +215,13 @@ impl Database {
                     let padded_fraction = format!("{:0<width$}", fraction_str, width = max_fraction_digits);
                     normalized_values.push(format!("{}:{}:{}.{}", parts[0], parts[1], seconds_str, padded_fraction));
                 } else {
-                    // No fractional part - add zeros
-                    let padded_fraction = "0".repeat(max_fraction_digits);
-                    normalized_values.push(format!("{}:{}:{}.{}", parts[0], parts[1], seconds_part, padded_fraction));
+                    // No fractional part - add zeros only if needed
+                    if max_fraction_digits > 0 {
+                        let padded_fraction = "0".repeat(max_fraction_digits);
+                        normalized_values.push(format!("{}:{}:{}.{}", parts[0], parts[1], seconds_part, padded_fraction));
+                    } else {
+                        normalized_values.push(value.clone());
+                    }
                 }
             } else {
                 // Not a valid time format, keep as is
@@ -519,6 +554,7 @@ impl Database {
 
     fn array_value_to_string(&self, array: &datafusion::arrow::array::ArrayRef, index: usize) -> Result<String> {
         use datafusion::arrow::array::*;
+        use chrono::{DateTime, Utc};
         
         match array.data_type() {
             DataType::Utf8 => {
@@ -528,7 +564,7 @@ impl Database {
             DataType::Int64 => {
                 let int_array = array.as_any().downcast_ref::<Int64Array>().unwrap();
                 if int_array.is_null(index) {
-                    Ok("".to_string())
+                    Ok("NULL".to_string())
                 } else {
                     Ok(int_array.value(index).to_string())
                 }
@@ -536,7 +572,7 @@ impl Database {
             DataType::Float64 => {
                 let float_array = array.as_any().downcast_ref::<Float64Array>().unwrap();
                 if float_array.is_null(index) {
-                    Ok("".to_string())
+                    Ok("NULL".to_string())
                 } else {
                     Ok(float_array.value(index).to_string())
                 }
@@ -551,35 +587,55 @@ impl Database {
                     TimeUnit::Second => {
                         let timestamp_array = array.as_any().downcast_ref::<TimestampSecondArray>().unwrap();
                         if timestamp_array.is_null(index) {
-                            Ok("".to_string())
+                            Ok("NULL".to_string())
                         } else {
                             let timestamp = timestamp_array.value(index);
-                            // Convert seconds since midnight back to HH:MM:SS format
-                            let hours = (timestamp / 3600) % 24;
-                            let minutes = (timestamp / 60) % 60;
-                            let seconds = timestamp % 60;
-                            Ok(format!("{:02}:{:02}:{:02}", hours, minutes, seconds))
+                            // Check if this is a datetime (> 1 day) or time-of-day value
+                            if timestamp > 86400 {
+                                // This is a datetime - format as full datetime
+                                let datetime = DateTime::from_timestamp(timestamp, 0)
+                                    .unwrap_or_else(|| DateTime::from_timestamp(0, 0).unwrap());
+                                Ok(datetime.format("%Y-%m-%d %H:%M:%S").to_string())
+                            } else {
+                                // This is time-of-day - convert seconds since midnight back to HH:MM:SS format
+                                let hours = (timestamp / 3600) % 24;
+                                let minutes = (timestamp / 60) % 60;
+                                let seconds = timestamp % 60;
+                                Ok(format!("{:02}:{:02}:{:02}", hours, minutes, seconds))
+                            }
                         }
                     }
                     TimeUnit::Millisecond => {
                         let timestamp_array = array.as_any().downcast_ref::<TimestampMillisecondArray>().unwrap();
                         if timestamp_array.is_null(index) {
-                            Ok("".to_string())
+                            Ok("NULL".to_string())
                         } else {
                             let timestamp = timestamp_array.value(index);
-                            // Convert milliseconds since midnight back to HH:MM:SS.mmm format
-                            let total_seconds = timestamp / 1_000;
-                            let milliseconds = timestamp % 1_000;
-                            let hours = (total_seconds / 3600) % 24;
-                            let minutes = (total_seconds / 60) % 60;
-                            let seconds = total_seconds % 60;
-                            Ok(format!("{:02}:{:02}:{:02}.{:03}", hours, minutes, seconds, milliseconds))
+                            // Check if this is a datetime (> 1 day in milliseconds) or time-of-day value
+                            if timestamp > 86_400_000 {
+                                // This is a datetime - format as full datetime
+                                let datetime = DateTime::from_timestamp_millis(timestamp)
+                                    .unwrap_or_else(|| DateTime::from_timestamp_millis(0).unwrap());
+                                Ok(datetime.format("%Y-%m-%d %H:%M:%S").to_string())
+                            } else {
+                                // This is time-of-day - convert milliseconds since midnight back to HH:MM:SS.mmm format
+                                let total_seconds = timestamp / 1_000;
+                                let milliseconds = timestamp % 1_000;
+                                let hours = (total_seconds / 3600) % 24;
+                                let minutes = (total_seconds / 60) % 60;
+                                let seconds = total_seconds % 60;
+                                if milliseconds == 0 {
+                                    Ok(format!("{:02}:{:02}:{:02}", hours, minutes, seconds))
+                                } else {
+                                    Ok(format!("{:02}:{:02}:{:02}.{:03}", hours, minutes, seconds, milliseconds))
+                                }
+                            }
                         }
                     }
                     TimeUnit::Microsecond => {
                         let timestamp_array = array.as_any().downcast_ref::<TimestampMicrosecondArray>().unwrap();
                         if timestamp_array.is_null(index) {
-                            Ok("".to_string())
+                            Ok("NULL".to_string())
                         } else {
                             let timestamp = timestamp_array.value(index);
                             // Convert microseconds since midnight back to HH:MM:SS.mmmmmm format
@@ -594,7 +650,7 @@ impl Database {
                     TimeUnit::Nanosecond => {
                         let timestamp_array = array.as_any().downcast_ref::<TimestampNanosecondArray>().unwrap();
                         if timestamp_array.is_null(index) {
-                            Ok("".to_string())
+                            Ok("NULL".to_string())
                         } else {
                             let timestamp = timestamp_array.value(index);
                             // Convert nanoseconds since midnight back to HH:MM:SS.nnnnnnnnn format
@@ -611,7 +667,7 @@ impl Database {
             DataType::Date32 => {
                 let date_array = array.as_any().downcast_ref::<Date32Array>().unwrap();
                 if date_array.is_null(index) {
-                    Ok("".to_string())
+                    Ok("NULL".to_string())
                 } else {
                     let days = date_array.value(index);
                     // Convert days since epoch (1970-01-01) to readable date
@@ -807,8 +863,11 @@ impl Database {
                             if value.is_empty() || value.to_lowercase() == "null" || value == "-" || value.to_lowercase() == "n/a" {
                                 timestamp_values.push(None);
                             } else {
-                                // Try to parse time string in HH:MM:SS format
-                                if let Some(timestamp) = Self::parse_time_string_to_timestamp(value, unit) {
+                                // Try to parse as datetime string first (YYYY-MM-DD HH:MM:SS)
+                                if let Some(timestamp) = Self::parse_datetime_string_to_timestamp(value, unit) {
+                                    timestamp_values.push(Some(timestamp));
+                                } else if let Some(timestamp) = Self::parse_time_string_to_timestamp(value, unit) {
+                                    // Try to parse time string in HH:MM:SS format
                                     timestamp_values.push(Some(timestamp));
                                 } else {
                                     // Try to parse as regular timestamp number

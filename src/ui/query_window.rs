@@ -80,6 +80,7 @@ impl QueryWindow {
                     // Execute on Ctrl+Enter
                     if response.response.has_focus() 
                         && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.ctrl) {
+                        self.page = 0;  // Reset to first page for new query
                         self.execute_query(db.clone());
                     }
                 });
@@ -149,9 +150,10 @@ impl QueryWindow {
                 ui.separator();
                 ui.horizontal(|ui| {
                         ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
-                            if ui.button("Previous")
+                            let prev_enabled = self.page > 0;
+                            if ui.add_enabled(prev_enabled, egui::Button::new("Previous"))
                                 .on_hover_text("Go to previous page")
-                                .clicked() && self.page > 0 {
+                                .clicked() {
                                 self.page = self.page.saturating_sub(1);
                                 self.execute_query(db.clone());
                             }
@@ -168,9 +170,17 @@ impl QueryWindow {
                             
                             ui.label(format!("Page {} of {}", self.page + 1, total_pages));
                             
-                            if ui.button("Next")
-                                .on_hover_text("Go to next page")
-                                .clicked() && self.page + 1 < total_pages {
+                            // Debug info
+                            if self.result.as_ref().and_then(|r| r.total_rows).is_none() {
+                                ui.colored_label(egui::Color32::YELLOW, "Warning: total_rows not set!");
+                            }
+                            
+                            let next_enabled = self.page + 1 < total_pages;
+                            let next_button = ui.add_enabled(next_enabled, egui::Button::new("Next"))
+                                .on_hover_text(format!("Go to page {} (enabled: {})", self.page + 2, next_enabled));
+                            
+                            if next_button.clicked() {
+                                println!("Next button clicked! Moving from page {} to {}", self.page, self.page + 1);
                                 self.page += 1;
                                 self.execute_query(db.clone());
                             }
@@ -182,13 +192,14 @@ impl QueryWindow {
                              if ui.add(egui::TextEdit::singleline(&mut page_size_str)
                                  .desired_width(60.0)
                                  .hint_text("25")).changed() {
-                                 if let Ok(new_size) = page_size_str.parse::<usize>() {
-                                     if new_size > 0 && new_size <= 10000 {
-                                         self.page_size = new_size;
-                                         // Re-execute query with new page size
-                                         self.execute_query(db.clone());
-                                     }
-                                 }
+                                                                 if let Ok(new_size) = page_size_str.parse::<usize>() {
+                                    if new_size > 0 && new_size <= 10000 {
+                                        self.page_size = new_size;
+                                        self.page = 0;  // Reset to first page when changing page size
+                                        // Re-execute query with new page size
+                                        self.execute_query(db.clone());
+                                    }
+                                }
                              }
                         });
                         
@@ -251,8 +262,7 @@ impl QueryWindow {
     
     fn execute_query(&mut self, db: Arc<Database>) {
         self.error = None;
-        // Reset to first page when executing a new query
-        self.page = 0;
+        // Don't reset page - we're already managing it in the pagination buttons
         // self.is_executing = true; // This line was removed from imports, so it's removed here.
         
         match crate::core::QueryExecutor::execute_with_pagination(&db, &self.query, self.page, self.page_size) {

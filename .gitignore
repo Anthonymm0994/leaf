@@ -44,10 +44,42 @@ Thumbs.db
 *.stackdump
 
 # Project specific
-# Ignore the entire scripts directory (contains test data generation tools)
-scripts/
-# But keep the smaller test data files in test_data directory
-!test_data/*.csv
+# Archive directory (old files)
+archive/
+
+# Test outputs and reports
+docs/reports/
+comprehensive_test_outputs/
+
+# Large test data files
+data_gen_scripts/*.csv
+data_gen_scripts/*.arrow
+test_data/*_300k.csv
+test_data/*_3m.csv
+test_data/*_100k.csv
+test_data/*_10k.csv
+
+# Keep only small test data files
+!test_data/datetime_timestamps.csv
+!test_data/gaps_data.csv
+!test_data/iso_timestamps.csv
+!test_data/time_only.csv
+!test_data/unix_timestamps.csv
+
+# Temporary Arrow files
+*.arrow
+!test_data/*.arrow
+
+# Python test scripts (keeping only essential ones)
+scripts/testing/test_*.py
+scripts/analysis/
+scripts/validation/
+
+# Keep important scripts
+!scripts/generate_test_data.py
+!scripts/README.md
+!scripts/requirements.txt
+!scripts/updated_test_data_format.md
 
 # Temporary files
 *.tmp
