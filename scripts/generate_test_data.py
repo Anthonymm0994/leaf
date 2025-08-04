@@ -84,8 +84,66 @@ def generate_dumb_time(good_time_str: str, is_first_in_group: bool) -> str:
     
     return dumb_datetime.strftime("%H:%M:%S.%f")[:-3]
 
+def generate_block_values():
+    """Generate values for a block that will be repeated across multiple rows."""
+    values = {
+        'width': f"{random.uniform(1.00, 200.00):.2f}",
+        'height': f"{random.uniform(0.2, 4.8):.1f}",
+        'angle': f"{random.uniform(0.00, 360.00):.2f}",
+    }
+    
+    # Categorical columns
+    for i in range(3, 11):
+        cat_values = [chr(ord('a') + j) for j in range(i)]
+        values[f'category_{i}'] = random.choice(cat_values)
+    
+    # Boolean columns
+    for col in ['isGood', 'isOld', 'isWhat', 'isEnabled', 'isFlagged']:
+        values[col] = random.choice([True, False])
+    
+    # Inference columns
+    values['integer_infer_blank'] = random.randint(1, 1000) if random.random() > 0.1 else None
+    values['integer_infer_dash'] = random.randint(1, 1000) if random.random() > 0.1 else "-"
+    values['real_infer_blank'] = round(random.uniform(0.0, 100.0), 3) if random.random() > 0.1 else None
+    values['real_infer_dash'] = round(random.uniform(0.0, 100.0), 3) if random.random() > 0.1 else "-"
+    values['text_infer_blank'] = f"text_{random.randint(1, 100)}" if random.random() > 0.1 else None
+    values['text_infer_dash'] = f"text_{random.randint(1, 100)}" if random.random() > 0.1 else "-"
+    values['boolean_infer_blank'] = random.choice([True, False]) if random.random() > 0.1 else None
+    values['boolean_infer_dash'] = random.choice([True, False]) if random.random() > 0.1 else "-"
+    
+    # Date columns
+    date = datetime(2024, 1, 1) + timedelta(days=random.randint(0, 365))
+    values['date_infer_blank'] = date.strftime("%Y-%m-%d") if random.random() > 0.1 else None
+    values['date_infer_dash'] = date.strftime("%Y-%m-%d") if random.random() > 0.1 else "-"
+    
+    # DateTime columns
+    dt = datetime(2024, 1, 1) + timedelta(days=random.randint(0, 365), seconds=random.randint(0, 86399))
+    values['datetime_infer_blank'] = dt.strftime("%Y-%m-%d %H:%M:%S") if random.random() > 0.1 else None
+    values['datetime_infer_dash'] = dt.strftime("%Y-%m-%d %H:%M:%S") if random.random() > 0.1 else "-"
+    
+    # Time columns
+    values['timeseconds_infer_blank'] = f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}" if random.random() > 0.1 else None
+    values['timeseconds_infer_dash'] = f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}" if random.random() > 0.1 else "-"
+    values['timemilliseconds_infer_blank'] = f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}.{random.randint(0,999):03d}" if random.random() > 0.1 else None
+    values['timemilliseconds_infer_dash'] = f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}.{random.randint(0,999):03d}" if random.random() > 0.1 else "-"
+    
+    # Blob column
+    values['blob_infer_blank'] = f"blob_{random.randint(1, 1000)}" if random.random() > 0.1 else None
+    values['blob_infer_dash'] = f"blob_{random.randint(1, 1000)}" if random.random() > 0.1 else "-"
+    
+    # Tags
+    values['tags'] = f"tag{random.randint(0, 9)}"
+    
+    # Distribution columns
+    values['bimodal'] = round(random.choice([random.gauss(30, 5), random.gauss(70, 5)]), 2)
+    values['exponential'] = round(random.expovariate(1/50), 2)
+    values['uniform'] = round(random.uniform(0, 100), 2)
+    values['normal'] = round(random.gauss(50, 15), 2)
+    
+    return values
+
 def generate_group(group_size: int, start_time: datetime, max_time: datetime = None) -> pd.DataFrame:
-    """Generate a single group of data."""
+    """Generate a single group of data with blocks of identical values."""
     # Time columns
     good_times, time_group_indices = generate_time_with_duplicates(start_time, group_size, max_time)
     
@@ -97,148 +155,31 @@ def generate_group(group_size: int, start_time: datetime, max_time: datetime = N
         else:
             dumb_times.append(generate_dumb_time(good_times[i], False))
     
-    # Numerical columns
-    width = [f"{random.uniform(1.00, 200.00):.2f}" for _ in range(group_size)]
-    height = [f"{random.uniform(0.2, 4.8):.1f}" for _ in range(group_size)]
-    angle = [f"{random.uniform(0.00, 360.00):.2f}" for _ in range(group_size)]
+    # Generate data in blocks
+    rows_data = []
+    i = 0
+    while i < group_size:
+        # Determine block size (5-20 rows)
+        block_size = min(random.randint(5, 20), group_size - i)
+        
+        # Generate values for this block
+        block_values = generate_block_values()
+        
+        # Apply these values to all rows in the block
+        for j in range(block_size):
+            rows_data.append(block_values)
+        
+        i += block_size
     
-    # Categorical columns
-    categories = {}
-    for i in range(3, 11):
-        cat_values = [chr(ord('a') + j) for j in range(i)]
-        categories[f'category_{i}'] = [random.choice(cat_values) for _ in range(group_size)]
-    
-    # Boolean columns
-    booleans = {
-        'isGood': [random.choice([True, False]) for _ in range(group_size)],
-        'isOld': [random.choice([True, False]) for _ in range(group_size)],
-        'isWhat': [random.choice([True, False]) for _ in range(group_size)],
-        'isEnabled': [random.choice([True, False]) for _ in range(group_size)],
-        'isFlagged': [random.choice([True, False]) for _ in range(group_size)]
-    }
-    
-    # Inference stress test columns
-    inference_cols = {}
-    
-    # Helper function to add random blanks or dashes
-    def add_missing_values(data: List[Any], missing_type: str, missing_rate: float = 0.1) -> List[Any]:
-        result = data.copy()
-        n_missing = int(len(data) * missing_rate)
-        if n_missing > 0:
-            indices = random.sample(range(len(data)), n_missing)
-            for idx in indices:
-                if missing_type == 'blank':
-                    result[idx] = None  # Will become empty in CSV
-                else:  # dash
-                    result[idx] = "-"
-        return result
-    
-    # Integer inference columns
-    int_data = [random.randint(1, 1000) for _ in range(group_size)]
-    inference_cols['integer_infer_blank'] = add_missing_values(int_data, 'blank')
-    inference_cols['integer_infer_dash'] = add_missing_values(int_data.copy(), 'dash')
-    
-    # Real inference columns
-    real_data = [round(random.uniform(0.0, 100.0), 3) for _ in range(group_size)]
-    inference_cols['real_infer_blank'] = add_missing_values(real_data, 'blank')
-    inference_cols['real_infer_dash'] = add_missing_values(real_data.copy(), 'dash')
-    
-    # Text inference columns
-    text_data = [f"text_{random.randint(1, 100)}" for _ in range(group_size)]
-    inference_cols['text_infer_blank'] = add_missing_values(text_data, 'blank')
-    inference_cols['text_infer_dash'] = add_missing_values(text_data.copy(), 'dash')
-    
-    # Boolean inference columns
-    bool_data = [random.choice([True, False]) for _ in range(group_size)]
-    inference_cols['boolean_infer_blank'] = add_missing_values(bool_data, 'blank')
-    inference_cols['boolean_infer_dash'] = add_missing_values(bool_data.copy(), 'dash')
-    
-    # Date inference columns (YYYY-MM-DD)
-    date_data = [(datetime(2024, 1, 1) + timedelta(days=random.randint(0, 365))).strftime("%Y-%m-%d") 
-                 for _ in range(group_size)]
-    inference_cols['date_infer_blank'] = add_missing_values(date_data, 'blank')
-    inference_cols['date_infer_dash'] = add_missing_values(date_data.copy(), 'dash')
-    
-    # DateTime inference columns (YYYY-MM-DD HH:MM:SS)
-    datetime_data = [(datetime(2024, 1, 1) + timedelta(
-        days=random.randint(0, 365),
-        seconds=random.randint(0, 86399)
-    )).strftime("%Y-%m-%d %H:%M:%S") for _ in range(group_size)]
-    inference_cols['datetime_infer_blank'] = add_missing_values(datetime_data, 'blank')
-    inference_cols['datetime_infer_dash'] = add_missing_values(datetime_data.copy(), 'dash')
-    
-    # Time columns with different precisions
-    # TimeSeconds (HH:MM:SS)
-    time_sec_data = [f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}" 
-                     for _ in range(group_size)]
-    inference_cols['timeseconds_infer_blank'] = add_missing_values(time_sec_data, 'blank')
-    inference_cols['timeseconds_infer_dash'] = add_missing_values(time_sec_data.copy(), 'dash')
-    
-    # TimeMilliseconds (HH:MM:SS.sss)
-    time_ms_data = [f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}.{random.randint(0,999):03d}" 
-                    for _ in range(group_size)]
-    inference_cols['timemilliseconds_infer_blank'] = add_missing_values(time_ms_data, 'blank')
-    inference_cols['timemilliseconds_infer_dash'] = add_missing_values(time_ms_data.copy(), 'dash')
-    
-    # TimeMicroseconds (HH:MM:SS.ssssss)
-    time_us_data = [f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}.{random.randint(0,999999):06d}" 
-                    for _ in range(group_size)]
-    inference_cols['timemicroseconds_infer_blank'] = add_missing_values(time_us_data, 'blank')
-    inference_cols['timemicroseconds_infer_dash'] = add_missing_values(time_us_data.copy(), 'dash')
-    
-    # TimeNanoseconds (HH:MM:SS.sssssssss)
-    time_ns_data = [f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}.{random.randint(0,999999999):09d}" 
-                    for _ in range(group_size)]
-    inference_cols['timenanoseconds_infer_blank'] = add_missing_values(time_ns_data, 'blank')
-    inference_cols['timenanoseconds_infer_dash'] = add_missing_values(time_ns_data.copy(), 'dash')
-    
-    # Blob inference columns (base64 encoded data)
-    blob_data = [base64.b64encode(f"blob_data_{i}".encode()).decode() for i in range(group_size)]
-    inference_cols['blob_infer_blank'] = add_missing_values(blob_data, 'blank')
-    inference_cols['blob_infer_dash'] = add_missing_values(blob_data.copy(), 'dash')
-    
-    # Multi-value column (tags)
-    tag_options = ["", "a", "a,b", "a,b,c"]
-    tags = [random.choice(tag_options) for _ in range(group_size)]
-    
-    # Distribution columns
-    # Bimodal distribution
-    bimodal = []
-    for _ in range(group_size):
-        if random.random() < 0.5:
-            bimodal.append(np.random.normal(30, 5))
-        else:
-            bimodal.append(np.random.normal(70, 5))
-    
-    # Linear over time (increases with position in dataset)
-    linear_over_time = [10 + (i / group_size) * 80 + np.random.normal(0, 2) for i in range(group_size)]
-    
-    # Exponential distribution
-    exponential = np.random.exponential(20, group_size).tolist()
-    
-    # Uniform distribution
-    uniform = np.random.uniform(0, 100, group_size).tolist()
-    
-    # Normal distribution
-    normal = np.random.normal(50, 15, group_size).tolist()
-    
-    # Combine all data
+    # Create DataFrame from block data
     data = {
         'good_time': good_times,
         'dumb_time': dumb_times,
-        'width': width,
-        'height': height,
-        'angle': angle,
-        **categories,
-        **booleans,
-        **inference_cols,
-        'tags': tags,
-        'bimodal': bimodal,
-        'linear_over_time': linear_over_time,
-        'exponential': exponential,
-        'uniform': uniform,
-        'normal': normal
     }
+    
+    # Add all the block data columns
+    for key in rows_data[0].keys():
+        data[key] = [row[key] for row in rows_data]
     
     return pd.DataFrame(data)
 
@@ -256,14 +197,14 @@ def generate_test_data(n_rows: int = 10000) -> pd.DataFrame:
         
         # Determine duplication
         rand = random.random()
-        if rand < 0.80:  # 80% unique
+        if rand < 0.85:  # 85% unique
             group_plans.append({
                 'size': group_size,
                 'duplicates': 0,
                 'rows': group_size
             })
             current_rows += group_size
-        elif rand < 0.95:  # 15% duplicated once
+        elif rand < 0.95:  # 10% duplicated once
             total_rows = group_size * 2
             if current_rows + total_rows <= n_rows:
                 group_plans.append({

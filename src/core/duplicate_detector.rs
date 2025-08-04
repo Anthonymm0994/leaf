@@ -220,19 +220,21 @@ impl DuplicateDetector {
         row_indices: &[usize],
         ignore_indices: &HashSet<usize>,
     ) -> Result<u64> {
-        let mut hasher = DefaultHasher::new();
+        // For duplicate detection, we want to compare groups based on their content signature,
+        // not the exact number of rows. We'll use the first row as the representative signature.
+        // This allows groups with the same values but different row counts to be detected as duplicates.
         
-        // Sort row indices for consistent hashing
+        if row_indices.is_empty() {
+            return Ok(0);
+        }
+        
+        // Sort row indices to ensure we always use the same first row
         let mut sorted_indices = row_indices.to_vec();
         sorted_indices.sort();
         
-        for row_idx in sorted_indices {
-            // Compute hash for each row in the group
-            let row_hash = self.compute_row_hash(batch, row_idx, ignore_indices)?;
-            row_hash.hash(&mut hasher);
-        }
-        
-        Ok(hasher.finish())
+        // Use only the first row as the group's signature
+        let first_row_idx = sorted_indices[0];
+        self.compute_row_hash(batch, first_row_idx, ignore_indices)
     }
 
     /// Compute hash for a single row
