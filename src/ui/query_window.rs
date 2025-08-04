@@ -80,9 +80,22 @@ impl QueryWindow {
                     // Execute on Ctrl+Enter
                     if response.response.has_focus() 
                         && ui.input(|i| i.key_pressed(egui::Key::Enter) && i.modifiers.ctrl) {
+                        println!("Ctrl+Enter pressed! Executing query: {}", self.query);
                         self.page = 0;  // Reset to first page for new query
                         self.execute_query(db.clone());
+                        ui.ctx().request_repaint(); // Force UI update
                     }
+                });
+                
+                // Execute button
+                ui.horizontal(|ui| {
+                    if ui.button("Execute Query").clicked() {
+                        println!("Execute button clicked! Query: {}", self.query);
+                        self.page = 0;  // Reset to first page for new query
+                        self.execute_query(db.clone());
+                        ui.ctx().request_repaint();
+                    }
+                    ui.label("or press Ctrl+Enter");
                 });
                 
                 ui.separator();
@@ -261,15 +274,19 @@ impl QueryWindow {
     }
     
     fn execute_query(&mut self, db: Arc<Database>) {
+        println!("execute_query called with page: {}, page_size: {}", self.page, self.page_size);
         self.error = None;
         // Don't reset page - we're already managing it in the pagination buttons
         // self.is_executing = true; // This line was removed from imports, so it's removed here.
         
         match crate::core::QueryExecutor::execute_with_pagination(&db, &self.query, self.page, self.page_size) {
             Ok(result) => {
+                println!("Query executed successfully. Total rows: {:?}, Returned rows: {}", 
+                    result.total_rows, result.rows.len());
                 self.result = Some(result);
             }
             Err(e) => {
+                println!("Query execution error: {}", e);
                 self.error = Some(e.to_string());
                 self.result = None;
             }
