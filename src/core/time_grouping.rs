@@ -75,8 +75,26 @@ impl TimeGroupingEngine {
             return Ok(());
         }
         
-        // For fixed intervals, we divide the timestamp by the interval size
-        // This creates bins like: [0, interval), [interval, 2*interval), etc.
+        // First pass: find the min and max timestamps to determine the range
+        let mut min_timestamp = i64::MAX;
+        let mut max_timestamp = i64::MIN;
+        
+        for row in rows {
+            let time_str = &row[time_column_idx];
+            if !time_str.trim().is_empty() {
+                if let Ok(timestamp) = Self::parse_timestamp(time_str) {
+                    min_timestamp = min_timestamp.min(timestamp);
+                    max_timestamp = max_timestamp.max(timestamp);
+                }
+            }
+        }
+        
+        // If no valid timestamps found, return early
+        if min_timestamp == i64::MAX {
+            return Ok(());
+        }
+        
+        // Second pass: assign bins based on the range
         for row in rows {
             let time_str = &row[time_column_idx];
             
@@ -87,7 +105,11 @@ impl TimeGroupingEngine {
             }
             
             let timestamp = Self::parse_timestamp(time_str)?;
-            let bin = timestamp / (interval_seconds as i64);
+            
+            // Calculate bin based on offset from minimum timestamp
+            // This ensures bins start at 0 for the earliest time in the data
+            let offset_from_min = timestamp - min_timestamp;
+            let bin = offset_from_min / (interval_seconds as i64);
             groups.push(bin);
         }
         
@@ -113,21 +135,24 @@ impl TimeGroupingEngine {
             return Ok(());
         }
         
-        // Get the first timestamp to establish a baseline
-        let first_time_str = &rows[0][time_column_idx];
-        let first_timestamp = Self::parse_timestamp(first_time_str)?;
-        
         for row in rows {
             let time_str = &row[time_column_idx];
+            
+            // Handle empty strings
+            if time_str.trim().is_empty() {
+                groups.push(-1);
+                continue;
+            }
+            
             let timestamp = Self::parse_timestamp(time_str)?;
             
-            // Calculate time difference from the first timestamp
-            let time_diff = timestamp - first_timestamp;
+            // For time-of-day data, get seconds since midnight
+            let seconds_since_midnight = (timestamp % 86400) as u64;
             
-            // Find which interval this timestamp belongs to
+            // Find which interval this time belongs to
             let group = boundaries
                 .iter()
-                .position(|&boundary| time_diff <= boundary as i64)
+                .position(|&boundary| seconds_since_midnight < boundary)
                 .unwrap_or(boundaries.len()) as i64;
             
             groups.push(group);
