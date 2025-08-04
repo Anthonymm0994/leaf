@@ -1,92 +1,72 @@
 #!/usr/bin/env python3
 """
-Test Data Generator for Leaf Application
-
-This script generates synthetic CSV test data following specific requirements
-for testing data inference and processing capabilities.
+Generate test data with the correct duplication pattern:
+- Mini groups: rows with same good_time but different data values
+- Major groups: sequences ending when dumb_time is null, these can be duplicated
 """
 
 import pandas as pd
 import numpy as np
 import random
-from datetime import datetime, timedelta, time
 import argparse
-import base64
-import sys
-from typing import List, Dict, Any, Tuple
+from datetime import datetime, timedelta
+from typing import List, Dict, Any, Tuple, Optional
 
-# Set UTF-8 encoding for Windows
-if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding='utf-8')
-
-def generate_time_with_duplicates(start_time: datetime, n_rows: int, max_time: datetime = None) -> Tuple[List[str], List[int]]:
-    """
-    Generate good_time values with duplicates (1-5 times each).
-    Returns both the times and group indices.
-    """
-    times = []
-    group_indices = []
-    current_time = start_time
-    group_idx = 0
+def generate_dumb_time(good_time: str, is_first_row: bool) -> str:
+    """Generate dumb_time based on good_time with random offset."""
+    if is_first_row:
+        return None  # None/NaN for first row of major group
     
-    i = 0
-    while i < n_rows:
-        # Determine how many times to duplicate this time value (1-5)
-        duplicates = random.randint(1, 5)
-        
-        # Format time as HH:MM:SS.sss (only time part, allowing wraparound)
-        time_only = current_time.time()
-        time_str = time_only.strftime("%H:%M:%S.%f")[:-3]  # Milliseconds only
-        
-        # Add the duplicated times
-        for _ in range(min(duplicates, n_rows - i)):
-            times.append(time_str)
-            group_indices.append(group_idx)
-            i += 1
-        
-        # Advance time for next value (random increment)
-        increment = random.uniform(0.001, 60)  # 1ms to 60s
-        current_time += timedelta(seconds=increment)
-        group_idx += 1
-    
-    return times[:n_rows], group_indices[:n_rows]
-
-def generate_dumb_time(good_time_str: str, is_first_in_group: bool) -> str:
-    """
-    Generate dumb_time that is 1-5 minutes after good_time.
-    First row in each group gets empty value.
-    """
-    if is_first_in_group:
-        return ""
-    
-    # Parse good_time
-    time_parts = good_time_str.split(':')
+    # Parse good_time (HH:MM:SS.sss format)
+    time_parts = good_time.split(':')
     hours = int(time_parts[0])
     minutes = int(time_parts[1])
     seconds_ms = float(time_parts[2])
-    seconds = int(seconds_ms)
-    milliseconds = int((seconds_ms - seconds) * 1000)
     
-    # Create datetime for easier manipulation
-    base_date = datetime(2024, 1, 1)
-    good_datetime = datetime(2024, 1, 1, hours, minutes, seconds, milliseconds * 1000)
+    # Add random offset between -5 and +5 seconds
+    total_seconds = hours * 3600 + minutes * 60 + seconds_ms
+    offset = random.uniform(-5, 5)
+    new_total_seconds = total_seconds + offset
     
-    # Add 1-5 minutes (60-300 seconds) plus some random seconds
-    offset_seconds = random.randint(60, 300) + random.uniform(0, 59.999)
-    dumb_datetime = good_datetime + timedelta(seconds=offset_seconds)
+    # Handle wraparound for 24-hour format
+    if new_total_seconds < 0:
+        new_total_seconds += 86400
+    elif new_total_seconds >= 86400:
+        new_total_seconds -= 86400
     
-    # Handle day overflow - wrap around to stay within 24h
-    if dumb_datetime.date() > base_date.date():
-        # Calculate how much we've gone over midnight
-        overflow_seconds = (dumb_datetime - datetime(2024, 1, 2, 0, 0, 0)).total_seconds()
-        # Create new time starting from 00:00:00 plus the overflow
-        dumb_datetime = datetime(2024, 1, 1, 0, 0, 0) + timedelta(seconds=overflow_seconds)
+    # Format back to HH:MM:SS.sss
+    new_hours = int(new_total_seconds // 3600) % 24
+    new_minutes = int((new_total_seconds % 3600) // 60)
+    new_seconds = new_total_seconds % 60
     
-    return dumb_datetime.strftime("%H:%M:%S.%f")[:-3]
+    return f"{new_hours:02d}:{new_minutes:02d}:{new_seconds:06.3f}"
 
-def generate_block_values():
-    """Generate values for a block that will be repeated across multiple rows."""
-    values = {
+def generate_time_sequence(start_time: datetime, n_rows: int) -> List[str]:
+    """Generate good_time sequence with 1-5 duplicates."""
+    times = []
+    current_time = start_time
+    
+    i = 0
+    while i < n_rows:
+        # Decide how many rows will share this timestamp (1-5)
+        duplicate_count = min(random.randint(1, 5), n_rows - i)
+        
+        # Format time as HH:MM:SS.sss
+        time_str = current_time.strftime("%H:%M:%S.%f")[:-3]
+        
+        # Add this time for duplicate_count rows
+        for _ in range(duplicate_count):
+            times.append(time_str)
+            i += 1
+        
+        # Advance time by 1 second for next mini group
+        current_time += timedelta(seconds=1)
+    
+    return times
+
+def generate_row_data() -> Dict[str, Any]:
+    """Generate random data for a single row."""
+    data = {
         'width': f"{random.uniform(1.00, 200.00):.2f}",
         'height': f"{random.uniform(0.2, 4.8):.1f}",
         'angle': f"{random.uniform(0.00, 360.00):.2f}",
@@ -95,101 +75,79 @@ def generate_block_values():
     # Categorical columns
     for i in range(3, 11):
         cat_values = [chr(ord('a') + j) for j in range(i)]
-        values[f'category_{i}'] = random.choice(cat_values)
+        data[f'category_{i}'] = random.choice(cat_values)
     
     # Boolean columns
     for col in ['isGood', 'isOld', 'isWhat', 'isEnabled', 'isFlagged']:
-        values[col] = random.choice([True, False])
+        data[col] = random.choice([True, False])
     
-    # Inference columns
-    values['integer_infer_blank'] = random.randint(1, 1000) if random.random() > 0.1 else None
-    values['integer_infer_dash'] = random.randint(1, 1000) if random.random() > 0.1 else "-"
-    values['real_infer_blank'] = round(random.uniform(0.0, 100.0), 3) if random.random() > 0.1 else None
-    values['real_infer_dash'] = round(random.uniform(0.0, 100.0), 3) if random.random() > 0.1 else "-"
-    values['text_infer_blank'] = f"text_{random.randint(1, 100)}" if random.random() > 0.1 else None
-    values['text_infer_dash'] = f"text_{random.randint(1, 100)}" if random.random() > 0.1 else "-"
-    values['boolean_infer_blank'] = random.choice([True, False]) if random.random() > 0.1 else None
-    values['boolean_infer_dash'] = random.choice([True, False]) if random.random() > 0.1 else "-"
+    # Inference columns with missing values
+    data['integer_infer_blank'] = random.randint(1, 1000) if random.random() > 0.1 else None
+    data['integer_infer_dash'] = random.randint(1, 1000) if random.random() > 0.1 else "-"
+    data['real_infer_blank'] = round(random.uniform(0.0, 100.0), 3) if random.random() > 0.1 else None
+    data['real_infer_dash'] = round(random.uniform(0.0, 100.0), 3) if random.random() > 0.1 else "-"
+    data['text_infer_blank'] = f"text_{random.randint(1, 100)}" if random.random() > 0.1 else None
+    data['text_infer_dash'] = f"text_{random.randint(1, 100)}" if random.random() > 0.1 else "-"
+    data['boolean_infer_blank'] = random.choice([True, False]) if random.random() > 0.1 else None
+    data['boolean_infer_dash'] = random.choice([True, False]) if random.random() > 0.1 else "-"
     
     # Date columns
     date = datetime(2024, 1, 1) + timedelta(days=random.randint(0, 365))
-    values['date_infer_blank'] = date.strftime("%Y-%m-%d") if random.random() > 0.1 else None
-    values['date_infer_dash'] = date.strftime("%Y-%m-%d") if random.random() > 0.1 else "-"
+    data['date_infer_blank'] = date.strftime("%Y-%m-%d") if random.random() > 0.1 else None
+    data['date_infer_dash'] = date.strftime("%Y-%m-%d") if random.random() > 0.1 else "-"
     
     # DateTime columns
     dt = datetime(2024, 1, 1) + timedelta(days=random.randint(0, 365), seconds=random.randint(0, 86399))
-    values['datetime_infer_blank'] = dt.strftime("%Y-%m-%d %H:%M:%S") if random.random() > 0.1 else None
-    values['datetime_infer_dash'] = dt.strftime("%Y-%m-%d %H:%M:%S") if random.random() > 0.1 else "-"
+    data['datetime_infer_blank'] = dt.strftime("%Y-%m-%d %H:%M:%S") if random.random() > 0.1 else None
+    data['datetime_infer_dash'] = dt.strftime("%Y-%m-%d %H:%M:%S") if random.random() > 0.1 else "-"
     
     # Time columns
-    values['timeseconds_infer_blank'] = f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}" if random.random() > 0.1 else None
-    values['timeseconds_infer_dash'] = f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}" if random.random() > 0.1 else "-"
-    values['timemilliseconds_infer_blank'] = f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}.{random.randint(0,999):03d}" if random.random() > 0.1 else None
-    values['timemilliseconds_infer_dash'] = f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}.{random.randint(0,999):03d}" if random.random() > 0.1 else "-"
+    data['timeseconds_infer_blank'] = f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}" if random.random() > 0.1 else None
+    data['timeseconds_infer_dash'] = f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}" if random.random() > 0.1 else "-"
+    data['timemilliseconds_infer_blank'] = f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}.{random.randint(0,999):03d}" if random.random() > 0.1 else None
+    data['timemilliseconds_infer_dash'] = f"{random.randint(0,23):02d}:{random.randint(0,59):02d}:{random.randint(0,59):02d}.{random.randint(0,999):03d}" if random.random() > 0.1 else "-"
     
     # Blob column
-    values['blob_infer_blank'] = f"blob_{random.randint(1, 1000)}" if random.random() > 0.1 else None
-    values['blob_infer_dash'] = f"blob_{random.randint(1, 1000)}" if random.random() > 0.1 else "-"
+    data['blob_infer_blank'] = f"blob_{random.randint(1, 1000)}" if random.random() > 0.1 else None
+    data['blob_infer_dash'] = f"blob_{random.randint(1, 1000)}" if random.random() > 0.1 else "-"
     
     # Tags
-    values['tags'] = f"tag{random.randint(0, 9)}"
+    data['tags'] = f"tag{random.randint(0, 9)}"
     
     # Distribution columns
-    values['bimodal'] = round(random.choice([random.gauss(30, 5), random.gauss(70, 5)]), 2)
-    values['exponential'] = round(random.expovariate(1/50), 2)
-    values['uniform'] = round(random.uniform(0, 100), 2)
-    values['normal'] = round(random.gauss(50, 15), 2)
+    data['bimodal'] = round(random.choice([random.gauss(30, 5), random.gauss(70, 5)]), 2)
+    data['exponential'] = round(random.expovariate(1/50), 2)
+    data['uniform'] = round(random.uniform(0, 100), 2)
+    data['normal'] = round(random.gauss(50, 15), 2)
     
-    return values
+    return data
 
-def generate_group(group_size: int, start_time: datetime, max_time: datetime = None) -> pd.DataFrame:
-    """Generate a single group of data with blocks of identical values."""
-    # Time columns
-    good_times, time_group_indices = generate_time_with_duplicates(start_time, group_size, max_time)
+def generate_major_group(group_size: int, start_time: datetime) -> pd.DataFrame:
+    """Generate a major group with unique data for each row."""
+    # Generate time sequence
+    good_times = generate_time_sequence(start_time, group_size)
     
-    # First row of the entire group gets empty dumb_time
+    # Generate dumb times
     dumb_times = []
     for i in range(group_size):
-        if i == 0:  # Only the very first row of the group
-            dumb_times.append("")
-        else:
-            dumb_times.append(generate_dumb_time(good_times[i], False))
+        dumb_times.append(generate_dumb_time(good_times[i], i == 0))
     
-    # Generate data in blocks
-    rows_data = []
-    i = 0
-    while i < group_size:
-        # Determine block size (5-20 rows)
-        block_size = min(random.randint(5, 20), group_size - i)
-        
-        # Generate values for this block
-        block_values = generate_block_values()
-        
-        # Apply these values to all rows in the block
-        for j in range(block_size):
-            rows_data.append(block_values)
-        
-        i += block_size
+    # Generate unique data for each row
+    rows = []
+    for i in range(group_size):
+        row_data = generate_row_data()
+        row_data['good_time'] = good_times[i]
+        row_data['dumb_time'] = dumb_times[i]
+        rows.append(row_data)
     
-    # Create DataFrame from block data
-    data = {
-        'good_time': good_times,
-        'dumb_time': dumb_times,
-    }
-    
-    # Add all the block data columns
-    for key in rows_data[0].keys():
-        data[key] = [row[key] for row in rows_data]
-    
-    return pd.DataFrame(data)
+    return pd.DataFrame(rows)
 
 def generate_test_data(n_rows: int = 10000) -> pd.DataFrame:
-    """Generate the complete test dataset."""
-    # Pre-plan all groups to handle hour gaps properly
+    """Generate test data with proper major group duplication."""
+    # Plan major groups
     group_plans = []
     current_rows = 0
     
-    # Step 1: Plan all groups and their sizes
     while current_rows < n_rows:
         group_size = random.randint(200, 500)
         if current_rows + group_size > n_rows:
@@ -201,7 +159,7 @@ def generate_test_data(n_rows: int = 10000) -> pd.DataFrame:
             group_plans.append({
                 'size': group_size,
                 'duplicates': 0,
-                'rows': group_size
+                'total_rows': group_size
             })
             current_rows += group_size
         elif rand < 0.95:  # 10% duplicated once
@@ -210,125 +168,126 @@ def generate_test_data(n_rows: int = 10000) -> pd.DataFrame:
                 group_plans.append({
                     'size': group_size,
                     'duplicates': 1,
-                    'rows': total_rows
+                    'total_rows': total_rows
                 })
                 current_rows += total_rows
             else:
-                # Not enough room for duplicate
+                # Not enough room
                 group_plans.append({
                     'size': group_size,
                     'duplicates': 0,
-                    'rows': group_size
+                    'total_rows': group_size
                 })
                 current_rows += group_size
-        else:  # 5% duplicated twice
+        else:  # 5% duplicated twice (triplicated)
             total_rows = group_size * 3
             if current_rows + total_rows <= n_rows:
                 group_plans.append({
                     'size': group_size,
                     'duplicates': 2,
-                    'rows': total_rows
+                    'total_rows': total_rows
                 })
                 current_rows += total_rows
             else:
-                # Not enough room for all duplicates
+                # Not enough room
                 group_plans.append({
                     'size': group_size,
                     'duplicates': 0,
-                    'rows': group_size
+                    'total_rows': group_size
                 })
                 current_rows += group_size
     
-    # Step 2: Determine which groups should have hour gaps after them
-    # Select ~10% of groups for hour gaps
-    num_groups = len(group_plans)
-    num_gaps = max(1, int(num_groups * 0.1))
-    
-    # Randomly select groups to have gaps after them (not the last group)
-    gap_indices = set()
-    if num_groups > 1:
-        possible_indices = list(range(num_groups - 1))  # Don't put gap after last group
-        gap_indices = set(random.sample(possible_indices, min(num_gaps, len(possible_indices))))
-    
-    # Step 3: Generate groups with planned gaps
+    # Generate groups
     all_groups = []
-    current_time = datetime(2024, 1, 1, 0, 0, 0, 0)
+    current_time = datetime(2024, 1, 1, 0, 0, 0)
     
-    print(f"  Generating {len(group_plans)} groups...")
+    print(f"Generating {len(group_plans)} major groups...")
     
-    for group_idx, plan in enumerate(group_plans):
-        # Show progress for large datasets
-        if n_rows > 10000:
-            if group_idx % 50 == 0:
-                print(f"  Progress: {group_idx}/{len(group_plans)} groups generated...")
-            elif n_rows > 1000000 and group_idx % 500 == 0:
-                # More frequent updates for very large datasets
-                rows_so_far = sum(len(g) for g in all_groups)
-                print(f"  Progress: {group_idx}/{len(group_plans)} groups, {rows_so_far:,}/{n_rows:,} rows...")
-            
-        # Generate base group
-        group_df = generate_group(plan['size'], current_time, None)
-        all_groups.append(group_df)
+    for idx, plan in enumerate(group_plans):
+        if n_rows > 10000 and idx % 50 == 0:
+            print(f"  Progress: {idx}/{len(group_plans)} groups")
         
-        # Update current time
-        last_good_time = group_df['good_time'].iloc[-1]
-        time_parts = last_good_time.split(':')
+        # Generate base group
+        base_group = generate_major_group(plan['size'], current_time)
+        all_groups.append(base_group)
+        
+        # Update time for next group
+        last_time_str = base_group['good_time'].iloc[-1]
+        time_parts = last_time_str.split(':')
         hours = int(time_parts[0])
         minutes = int(time_parts[1])
-        seconds_ms = float(time_parts[2])
+        seconds = float(time_parts[2])
         
-        # Keep track of days elapsed based on current_time
-        days_elapsed = (current_time - datetime(2024, 1, 1, 0, 0, 0)).days
-        current_time = datetime(2024, 1, 1, hours, minutes, int(seconds_ms), 
-                               int((seconds_ms - int(seconds_ms)) * 1000000)) + timedelta(days=days_elapsed)
+        # Keep track of days
+        days_elapsed = (current_time - datetime(2024, 1, 1)).days
+        current_time = datetime(2024, 1, 1, hours, minutes, int(seconds)) + timedelta(days=days_elapsed)
         
         # Generate duplicates if needed
         for dup_num in range(plan['duplicates']):
+            # Add gap before duplicate
             current_time += timedelta(seconds=random.uniform(60, 300))
-                
-            dup_df = group_df.copy()
+            
+            # Generate duplicate with new times but same data sequence
+            dup_group = base_group.copy()
             
             # Update times in duplicate
-            new_good_times, _ = generate_time_with_duplicates(current_time, len(dup_df), None)
-            dup_df['good_time'] = new_good_times
+            new_good_times = generate_time_sequence(current_time, len(dup_group))
+            dup_group['good_time'] = new_good_times
             
             # Regenerate dumb_times
-            dup_df['dumb_time'] = [generate_dumb_time(gt, i == 0) 
-                                   for i, gt in enumerate(new_good_times)]
+            new_dumb_times = []
+            for i in range(len(dup_group)):
+                new_dumb_times.append(generate_dumb_time(new_good_times[i], i == 0))
+            dup_group['dumb_time'] = new_dumb_times
             
-            all_groups.append(dup_df)
+            all_groups.append(dup_group)
             
             # Update current time
-            if new_good_times:
-                last_time = new_good_times[-1]
-                time_parts = last_time.split(':')
-                # Keep track of days elapsed
-                days_elapsed = (current_time - datetime(2024, 1, 1, 0, 0, 0)).days
-                current_time = datetime(2024, 1, 1, int(time_parts[0]), int(time_parts[1]), 
-                                      int(float(time_parts[2]))) + timedelta(days=days_elapsed)
+            last_time_str = new_good_times[-1]
+            time_parts = last_time_str.split(':')
+            current_time = datetime(2024, 1, 1, int(time_parts[0]), int(time_parts[1]), 
+                                  int(float(time_parts[2]))) + timedelta(days=days_elapsed)
         
-        # Add gap after this group (either hour gap or normal gap)
-        if group_idx in gap_indices:
-            # Add exactly 1 hour gap
+        # Add gap after group (with occasional 1-hour gaps)
+        if random.random() < 0.1:  # 10% chance of hour gap
             current_time += timedelta(hours=1)
-            print(f"  Added 1-hour gap after group {group_idx + 1} of {len(group_plans)}")
+            print(f"  Added 1-hour gap after group {idx + 1}")
         else:
-            # Normal gap between groups (1-60 seconds)
             current_time += timedelta(seconds=random.uniform(1, 60))
     
     # Combine all groups
     final_df = pd.concat(all_groups, ignore_index=True)
     
-    # Trim to exact row count
+    # Trim to exact size
     if len(final_df) > n_rows:
         final_df = final_df.iloc[:n_rows]
+    
+    # Report statistics
+    print(f"\n✅ Generated {len(final_df)} rows")
+    
+    # Count actual duplicates
+    duplicate_count = 0
+    triplicate_count = 0
+    for plan in group_plans:
+        if plan['duplicates'] == 1:
+            duplicate_count += 1
+        elif plan['duplicates'] == 2:
+            triplicate_count += 1
+    
+    total_groups = len(group_plans)
+    print(f"📊 Major groups: {total_groups}")
+    print(f"   - Unique: {total_groups - duplicate_count - triplicate_count}")
+    print(f"   - Duplicated (2x): {duplicate_count} ({duplicate_count/total_groups*100:.1f}%)")
+    print(f"   - Triplicated (3x): {triplicate_count} ({triplicate_count/total_groups*100:.1f}%)")
     
     return final_df
 
 def main():
-    parser = argparse.ArgumentParser(description='Generate synthetic test data CSV')
+    parser = argparse.ArgumentParser(description='Generate test data with correct duplication pattern')
     parser.add_argument('--rows', type=int, default=10000, 
                        help='Number of rows to generate (default: 10000)')
+    parser.add_argument('--output', type=str, default='test_data.csv',
+                       help='Output filename (default: test_data.csv)')
     args = parser.parse_args()
     
     print(f"Generating {args.rows} rows of test data...")
@@ -337,11 +296,8 @@ def main():
     df = generate_test_data(args.rows)
     
     # Save to CSV
-    output_file = 'test_data.csv'
-    df.to_csv(output_file, index=False)
-    
-    print(f"✅ Generated {len(df)} rows")
-    print(f"✅ Saved to {output_file}")
+    df.to_csv(args.output, index=False)
+    print(f"✅ Saved to {args.output}")
     print(f"📊 Columns: {len(df.columns)}")
     print(f"📏 File size: {df.memory_usage(deep=True).sum() / 1024 / 1024:.2f} MB (in memory)")
 
