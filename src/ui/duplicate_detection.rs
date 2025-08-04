@@ -120,6 +120,7 @@ impl DuplicateDetectionDialog {
                     }
                 });
         });
+        ui.label(egui::RichText::new("ℹ Supports string and integer columns").weak().small());
 
         ui.separator();
 

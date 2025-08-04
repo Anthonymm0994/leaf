@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
-use datafusion::arrow::array::{StringArray, Int64Array, Float64Array, BooleanArray, TimestampSecondArray, TimestampMillisecondArray, TimestampMicrosecondArray, TimestampNanosecondArray, Date32Array, UInt32Array, Array};
+use datafusion::arrow::array::{StringArray, Int32Array, Int64Array, Float64Array, BooleanArray, TimestampSecondArray, TimestampMillisecondArray, TimestampMicrosecondArray, TimestampNanosecondArray, Date32Array, UInt32Array, Array};
 use datafusion::arrow::datatypes::{DataType, TimeUnit};
 use datafusion::arrow::record_batch::RecordBatch;
 use datafusion::arrow::compute;
@@ -107,15 +107,44 @@ impl DuplicateDetector {
         // Group rows by group_id
         let mut groups: HashMap<String, Vec<usize>> = HashMap::new();
         
-        // Get the group column as string array
+        // Get the group column
         let group_col = batch.column(group_col_idx);
-        let group_array = group_col.as_any().downcast_ref::<StringArray>()
-            .ok_or_else(|| crate::core::error::LeafError::Custom("Group column must be string type".to_string()))?;
-
-        // Group rows by their group_id
-        for (row_idx, group_id) in group_array.iter().enumerate() {
-            if let Some(group_id) = group_id {
-                groups.entry(group_id.to_string()).or_insert_with(Vec::new).push(row_idx);
+        
+        // Group rows by their group_id (support both string and integer columns)
+        match group_col.data_type() {
+            DataType::Utf8 => {
+                let group_array = group_col.as_any().downcast_ref::<StringArray>()
+                    .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to StringArray".to_string()))?;
+                for (row_idx, group_id) in group_array.iter().enumerate() {
+                    if let Some(group_id) = group_id {
+                        groups.entry(group_id.to_string()).or_insert_with(Vec::new).push(row_idx);
+                    }
+                }
+            }
+            DataType::Int32 => {
+                let group_array = group_col.as_any().downcast_ref::<Int32Array>()
+                    .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to Int32Array".to_string()))?;
+                for row_idx in 0..group_array.len() {
+                    if !group_array.is_null(row_idx) {
+                        let group_id = group_array.value(row_idx).to_string();
+                        groups.entry(group_id).or_insert_with(Vec::new).push(row_idx);
+                    }
+                }
+            }
+            DataType::Int64 => {
+                let group_array = group_col.as_any().downcast_ref::<Int64Array>()
+                    .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to Int64Array".to_string()))?;
+                for row_idx in 0..group_array.len() {
+                    if !group_array.is_null(row_idx) {
+                        let group_id = group_array.value(row_idx).to_string();
+                        groups.entry(group_id).or_insert_with(Vec::new).push(row_idx);
+                    }
+                }
+            }
+            _ => {
+                return Err(crate::core::error::LeafError::Custom(
+                    format!("Group column must be string or integer type, found: {:?}", group_col.data_type())
+                ));
             }
         }
 
@@ -236,6 +265,15 @@ impl DuplicateDetector {
                 let array = column.as_any().downcast_ref::<StringArray>()
                     .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to StringArray".to_string()))?;
                 Ok(array.value(row_idx).to_string())
+            }
+            DataType::Int32 => {
+                let array = column.as_any().downcast_ref::<Int32Array>()
+                    .ok_or_else(|| crate::core::error::LeafError::Custom("Failed to cast to Int32Array".to_string()))?;
+                if array.is_null(row_idx) {
+                    Ok("NULL".to_string())
+                } else {
+                    Ok(array.value(row_idx).to_string())
+                }
             }
             DataType::Int64 => {
                 let array = column.as_any().downcast_ref::<Int64Array>()
