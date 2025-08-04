@@ -52,12 +52,17 @@ impl QueryExecutor {
         let count_query = if query_trimmed.starts_with("SELECT * FROM") {
             // Extract table name from SELECT * FROM "table_name"
             if let Some(table_name_part) = query.split("FROM").nth(1) {
-                // Extract just the table name, ignoring any WHERE clause
-                let table_name = if let Some(where_pos) = table_name_part.to_uppercase().find(" WHERE ") {
-                    &table_name_part[..where_pos]
-                } else {
-                    table_name_part
-                };
+                // Extract just the table name, ignoring any WHERE/ORDER BY/GROUP BY/LIMIT clause
+                let table_name_upper = table_name_part.to_uppercase();
+                let end_pos = table_name_upper
+                    .find(" WHERE ")
+                    .or_else(|| table_name_upper.find(" ORDER "))
+                    .or_else(|| table_name_upper.find(" GROUP "))
+                    .or_else(|| table_name_upper.find(" LIMIT "))
+                    .or_else(|| table_name_upper.find(" HAVING "))
+                    .unwrap_or(table_name_part.len());
+                
+                let table_name = &table_name_part[..end_pos];
                 let table_name = table_name.trim().trim_matches('"').trim_matches('\'');
 
                 // Check if table exists
