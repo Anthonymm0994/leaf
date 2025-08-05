@@ -559,12 +559,16 @@ impl Database {
         match array.data_type() {
             DataType::Utf8 => {
                 let string_array = array.as_any().downcast_ref::<StringArray>().unwrap();
-                Ok(string_array.value(index).to_string())
+                if string_array.is_null(index) {
+                    Ok("".to_string())
+                } else {
+                    Ok(string_array.value(index).to_string())
+                }
             }
             DataType::Int64 => {
                 let int_array = array.as_any().downcast_ref::<Int64Array>().unwrap();
                 if int_array.is_null(index) {
-                    Ok("NULL".to_string())
+                    Ok("".to_string())
                 } else {
                     Ok(int_array.value(index).to_string())
                 }
@@ -572,14 +576,18 @@ impl Database {
             DataType::Float64 => {
                 let float_array = array.as_any().downcast_ref::<Float64Array>().unwrap();
                 if float_array.is_null(index) {
-                    Ok("NULL".to_string())
+                    Ok("".to_string())
                 } else {
                     Ok(float_array.value(index).to_string())
                 }
             }
             DataType::Boolean => {
                 let bool_array = array.as_any().downcast_ref::<BooleanArray>().unwrap();
-                Ok(bool_array.value(index).to_string())
+                if bool_array.is_null(index) {
+                    Ok("".to_string())
+                } else {
+                    Ok(bool_array.value(index).to_string())
+                }
             }
             DataType::Timestamp(unit, _) => {
                 // Handle timestamp arrays - convert back to time-only format
@@ -587,7 +595,7 @@ impl Database {
                     TimeUnit::Second => {
                         let timestamp_array = array.as_any().downcast_ref::<TimestampSecondArray>().unwrap();
                         if timestamp_array.is_null(index) {
-                            Ok("NULL".to_string())
+                            Ok("".to_string())
                         } else {
                             let timestamp = timestamp_array.value(index);
                             // Check if this is a datetime (> 1 day) or time-of-day value
@@ -608,7 +616,7 @@ impl Database {
                     TimeUnit::Millisecond => {
                         let timestamp_array = array.as_any().downcast_ref::<TimestampMillisecondArray>().unwrap();
                         if timestamp_array.is_null(index) {
-                            Ok("NULL".to_string())
+                            Ok("".to_string())
                         } else {
                             let timestamp = timestamp_array.value(index);
                             // Check if this is a datetime (> 1 day in milliseconds) or time-of-day value
@@ -635,7 +643,7 @@ impl Database {
                     TimeUnit::Microsecond => {
                         let timestamp_array = array.as_any().downcast_ref::<TimestampMicrosecondArray>().unwrap();
                         if timestamp_array.is_null(index) {
-                            Ok("NULL".to_string())
+                            Ok("".to_string())
                         } else {
                             let timestamp = timestamp_array.value(index);
                             // Convert microseconds since midnight back to HH:MM:SS.mmmmmm format
@@ -650,7 +658,7 @@ impl Database {
                     TimeUnit::Nanosecond => {
                         let timestamp_array = array.as_any().downcast_ref::<TimestampNanosecondArray>().unwrap();
                         if timestamp_array.is_null(index) {
-                            Ok("NULL".to_string())
+                            Ok("".to_string())
                         } else {
                             let timestamp = timestamp_array.value(index);
                             // Convert nanoseconds since midnight back to HH:MM:SS.nnnnnnnnn format
@@ -667,7 +675,7 @@ impl Database {
             DataType::Date32 => {
                 let date_array = array.as_any().downcast_ref::<Date32Array>().unwrap();
                 if date_array.is_null(index) {
-                    Ok("NULL".to_string())
+                    Ok("".to_string())
                 } else {
                     let days = date_array.value(index);
                     // Convert days since epoch (1970-01-01) to readable date
@@ -1244,7 +1252,7 @@ impl Database {
         
         // Infer types using the null-aware system (same as UI)
         // For now, use default null values since we don't have access to user config here
-        let default_null_values = vec!["null".to_string(), "NULL".to_string(), "N/A".to_string(), "".to_string()];
+        let default_null_values = vec!["".to_string(), "NULL".to_string(), "null".to_string(), "N/A".to_string(), "-".to_string()];
         let inferred_types = TypeInferrer::infer_column_types_with_nulls(&final_headers, &sample_data, &default_null_values);
         
         // Convert to Arrow schema

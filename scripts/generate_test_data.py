@@ -23,9 +23,9 @@ def generate_dumb_time(good_time: str, is_first_row: bool) -> str:
     minutes = int(time_parts[1])
     seconds_ms = float(time_parts[2])
     
-    # Add random offset between -5 and +5 seconds
+    # Add random offset between 0.1 and 10 seconds (always after good_time)
     total_seconds = hours * 3600 + minutes * 60 + seconds_ms
-    offset = random.uniform(-5, 5)
+    offset = random.uniform(0.1, 10.0)
     new_total_seconds = total_seconds + offset
     
     # Handle wraparound for 24-hour format

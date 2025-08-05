@@ -58,6 +58,7 @@ test_data/*_300k.csv
 test_data/*_3m.csv
 test_data/*_100k.csv
 test_data/*_10k.csv
+test_data/large_files/
 
 # Keep only small test data files
 !test_data/datetime_timestamps.csv

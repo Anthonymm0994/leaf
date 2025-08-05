@@ -41,10 +41,10 @@ impl ColumnType {
             ColumnType::Boolean => DataType::Boolean,
             ColumnType::Date => DataType::Date32,
             ColumnType::DateTime => DataType::Timestamp(TimeUnit::Second, None),
-            ColumnType::TimeSeconds => DataType::Utf8,
-            ColumnType::TimeMilliseconds => DataType::Utf8,
-            ColumnType::TimeMicroseconds => DataType::Utf8,
-            ColumnType::TimeNanoseconds => DataType::Utf8,
+            ColumnType::TimeSeconds => DataType::Timestamp(TimeUnit::Second, None),
+            ColumnType::TimeMilliseconds => DataType::Timestamp(TimeUnit::Millisecond, None),
+            ColumnType::TimeMicroseconds => DataType::Timestamp(TimeUnit::Microsecond, None),
+            ColumnType::TimeNanoseconds => DataType::Timestamp(TimeUnit::Nanosecond, None),
             ColumnType::Blob => DataType::Binary,
         }
     }
